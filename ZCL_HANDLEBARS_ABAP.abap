@@ -1,0 +1,2031 @@
+CLASS zcl_handlebars_abap DEFINITION
+  PUBLIC
+  FINAL
+  CREATE PUBLIC .
+
+  PUBLIC SECTION.
+    TYPES: BEGIN OF ts_helper,
+             name   TYPE string,
+             object TYPE REF TO object,
+             method TYPE string,
+           END OF ts_helper.
+
+    TYPES: BEGIN OF ts_compile_result,
+             template TYPE REF TO zcl_handlebars_abap,
+             error    TYPE string,
+           END OF ts_compile_result.
+
+    TYPES: BEGIN OF ts_template_result,
+             text  TYPE string,
+             error TYPE string,
+           END OF ts_template_result.
+
+    TYPES: BEGIN OF ts_text_result,
+             text  TYPE string,
+             error TYPE string,
+           END OF ts_text_result.
+
+    TYPES: BEGIN OF ts_data,
+             this   TYPE REF TO data,
+             parent TYPE REF TO data, " ts_data
+           END OF ts_data.
+
+    TYPES: tt_data TYPE TABLE OF ts_data.
+
+    CLASS-METHODS compile
+      IMPORTING
+        iv_template_string TYPE string
+      RETURNING
+        VALUE(rs_result)   TYPE ts_compile_result.
+
+    CLASS-METHODS register_helper
+      IMPORTING
+        iv_name   TYPE string
+        iv_method TYPE string
+        ir_object TYPE REF TO object OPTIONAL.
+
+    METHODS template
+      IMPORTING
+        ir_data          TYPE REF TO data OPTIONAL
+      RETURNING
+        VALUE(rs_result) TYPE ts_template_result.
+
+    METHODS fn
+      IMPORTING
+        it_data          TYPE tt_data OPTIONAL
+      RETURNING
+        VALUE(rs_result) TYPE ts_text_result.
+
+    METHODS inverse
+      IMPORTING
+        it_data          TYPE tt_data OPTIONAL
+      RETURNING
+        VALUE(rs_result) TYPE ts_text_result.
+
+  PROTECTED SECTION.
+
+  PRIVATE SECTION.
+    TYPES: tt_helpers TYPE TABLE OF ts_helper.
+
+    TYPES: BEGIN OF ts_find_helper_result,
+             helper TYPE REF TO ts_helper,
+             error  TYPE string,
+           END OF ts_find_helper_result.
+
+    CLASS-DATA: mt_helpers TYPE tt_helpers.
+
+    CLASS-METHODS find_helper
+      IMPORTING
+        iv_name          TYPE string
+      RETURNING
+        VALUE(rs_result) TYPE ts_find_helper_result.
+
+    " .:: Tokenizer section.
+    TYPES: BEGIN OF ENUM e_tokenizer_token_types,
+             e_token_type_unknown,
+             e_token_type_text,
+             e_token_type_start,
+             e_token_type_end,
+             e_token_type_pipe,
+             e_token_type_at,
+             e_token_type_else,
+             e_token_type_as,
+             e_token_type_null,
+             e_token_type_undefined,
+             e_token_type_bool_literal,
+             e_token_type_number_literal,
+             e_token_type_string_literal,
+             e_token_type_path,
+             e_token_type_space,
+             e_token_type_eop,
+             e_token_type_eof,
+           END OF ENUM e_tokenizer_token_types.
+
+    TYPES: tt_tokenizer_token_types TYPE STANDARD TABLE OF e_tokenizer_token_types WITH DEFAULT KEY.
+
+    TYPES: BEGIN OF ts_tokenizer_token,
+             position TYPE i,
+             value    TYPE string,
+             type     TYPE e_tokenizer_token_types,
+           END OF ts_tokenizer_token.
+
+    TYPES: tt_tokenizer_tokens TYPE STANDARD TABLE OF ts_tokenizer_token WITH DEFAULT KEY.
+
+    DATA: c_if       TYPE string VALUE 'if',
+          c_unless   TYPE string VALUE 'unless',
+          c_each     TYPE string VALUE 'each',
+          c_with     TYPE string VALUE 'with',
+          c_else     TYPE string VALUE 'else',
+          c_true     TYPE string VALUE 'true',
+          c_false    TYPE string VALUE 'false',
+          c_this     TYPE string VALUE 'this',
+          c_relative TYPE string VALUE '..'.
+
+    DATA: mt_tokenizer_tokens TYPE tt_tokenizer_tokens.
+
+    METHODS tokenizer_tokenize
+      IMPORTING
+        iv_template_string TYPE string
+      RETURNING
+        VALUE(rv_error)    TYPE string.
+
+    METHODS tokenizer_add_token
+      IMPORTING
+        VALUE(iv_value)    TYPE string
+        VALUE(iv_position) TYPE i
+        VALUE(iv_type)     TYPE e_tokenizer_token_types.
+
+    " .:: Parser section.
+    TYPES: tr_parser_statement TYPE REF TO data.
+
+    TYPES: tt_parser_statements TYPE STANDARD TABLE OF tr_parser_statement WITH DEFAULT KEY.
+
+    TYPES: tr_parser_expression TYPE tr_parser_statement.
+
+    TYPES: tt_parser_expressions TYPE STANDARD TABLE OF tr_parser_expression WITH DEFAULT KEY.
+
+    TYPES: BEGIN OF ts_parser_statement_base,
+             token TYPE ts_tokenizer_token,
+           END OF ts_parser_statement_base.
+
+    TYPES: BEGIN OF ts_parser_text,
+             value TYPE string.
+             INCLUDE TYPE ts_parser_statement_base.
+    TYPES: END OF ts_parser_text.
+
+    TYPES: BEGIN OF ts_parser_bool_literal,
+             value TYPE abap_bool.
+             INCLUDE TYPE ts_parser_statement_base.
+    TYPES: END OF ts_parser_bool_literal.
+
+    TYPES: BEGIN OF ts_parser_float_literal,
+             value TYPE float.
+             INCLUDE TYPE ts_parser_statement_base.
+    TYPES: END OF ts_parser_float_literal.
+
+    TYPES: BEGIN OF ts_parser_string_literal,
+             value TYPE float.
+             INCLUDE TYPE ts_parser_statement_base.
+    TYPES: END OF ts_parser_string_literal.
+
+    TYPES: BEGIN OF ts_parser_null_literal.
+             INCLUDE TYPE ts_parser_statement_base.
+    TYPES: END OF ts_parser_null_literal.
+
+    TYPES: BEGIN OF ts_parser_undefined_literal.
+             INCLUDE TYPE ts_parser_statement_base.
+    TYPES: END OF ts_parser_undefined_literal.
+
+    TYPES: BEGIN OF ts_parser_path,
+             parts         TYPE string_table,
+             is_identifier TYPE abap_bool.
+             INCLUDE TYPE ts_parser_statement_base.
+    TYPES: END OF ts_parser_path.
+
+    TYPES: BEGIN OF ts_parser_body,
+             statements TYPE tt_parser_statements.
+             INCLUDE    TYPE ts_parser_statement_base.
+    TYPES: END OF ts_parser_body.
+
+    TYPES: BEGIN OF ts_parser_template,
+             body TYPE ts_parser_body.
+             INCLUDE TYPE ts_parser_statement_base.
+    TYPES: END OF ts_parser_template.
+
+    TYPES: BEGIN OF ts_parser_helper,
+             name TYPE string,
+             args TYPE tt_parser_expressions.
+             INCLUDE TYPE ts_parser_statement_base.
+    TYPES: END OF ts_parser_helper.
+
+    TYPES: BEGIN OF ts_parser_block,
+             body   TYPE ts_parser_body,
+             else   TYPE ts_parser_body,
+             params TYPE string_table.
+             INCLUDE TYPE ts_parser_helper.
+    TYPES:END OF ts_parser_block.
+
+    TYPES: BEGIN OF ts_parser_inline_helper.
+             INCLUDE TYPE ts_parser_helper.
+    TYPES:END OF ts_parser_inline_helper.
+
+    TYPES: BEGIN OF ts_parser_eval_result,
+             error TYPE string,
+             stmt  TYPE tr_parser_statement,
+           END OF ts_parser_eval_result.
+
+    TYPES: BEGIN OF ts_parser_eval_results,
+             error TYPE string,
+             stmts TYPE tt_parser_statements,
+           END OF ts_parser_eval_results.
+
+    TYPES: BEGIN OF ts_parser_eval_helper_result,
+             error TYPE string,
+             name  TYPE string,
+           END OF ts_parser_eval_helper_result.
+
+    TYPES: BEGIN OF ts_parser_eval_args_result,
+             error       TYPE string,
+             expressions TYPE tt_parser_expressions,
+           END OF ts_parser_eval_args_result.
+
+    DATA: mv_parser_index TYPE i,
+          mr_template     TYPE REF TO data.
+
+    METHODS parser_parse
+      RETURNING
+        VALUE(rv_error) TYPE string.
+
+    METHODS parser_build_error
+      IMPORTING
+        iv_error        TYPE string
+        is_token        TYPE ts_tokenizer_token
+      RETURNING
+        VALUE(rv_error) TYPE string.
+
+    METHODS parser_build_expected_error
+      IMPORTING
+        iv_error        TYPE string
+        is_token        TYPE ts_tokenizer_token
+      RETURNING
+        VALUE(rv_error) TYPE string.
+
+    METHODS parser_peek_at
+      IMPORTING
+        iv_at           TYPE i
+      RETURNING
+        VALUE(rs_token) TYPE ts_tokenizer_token.
+
+    METHODS parser_peek
+      RETURNING
+        VALUE(rs_token) TYPE ts_tokenizer_token.
+
+    METHODS parser_eat
+      RETURNING
+        VALUE(rs_token) TYPE ts_tokenizer_token.
+
+    METHODS parser_eval_stmt
+      RETURNING
+        VALUE(rs_result) TYPE ts_parser_eval_result.
+
+    METHODS parser_eval_stmts
+      IMPORTING
+        it_termination_token_types TYPE tt_tokenizer_token_types OPTIONAL
+      RETURNING
+        VALUE(rs_results)          TYPE ts_parser_eval_results.
+
+    METHODS parser_eval_template
+      RETURNING
+        VALUE(rs_result) TYPE ts_parser_eval_result.
+
+    METHODS parser_eval_block
+      RETURNING
+        VALUE(rs_result) TYPE ts_parser_eval_result.
+
+    METHODS parser_eval_inline_helper
+      RETURNING
+        VALUE(rs_result) TYPE ts_parser_eval_result.
+
+    METHODS parser_eval_expr
+      RETURNING
+        VALUE(rs_result) TYPE ts_parser_eval_result.
+
+    METHODS parser_eval_path
+      RETURNING
+        VALUE(rs_result) TYPE ts_parser_eval_result.
+
+    METHODS parser_eval_helper_name
+      RETURNING
+        VALUE(rs_result) TYPE ts_parser_eval_helper_result.
+
+    METHODS parser_eval_args
+      IMPORTING
+        it_termination_token_types TYPE tt_tokenizer_token_types OPTIONAL
+      RETURNING
+        VALUE(rs_result)           TYPE ts_parser_eval_args_result.
+
+    METHODS parser_check_eop
+      IMPORTING
+        lv_peek         TYPE abap_bool OPTIONAL
+      RETURNING
+        VALUE(rv_error) TYPE string.
+
+    " .:: Backend section
+    TYPES: BEGIN OF ENUM e_backend_data_kinds,
+             e_backend_data_kind_unknown,
+             e_backend_data_kind_undefined,
+             e_backend_data_kind_simple,
+             e_backend_data_kind_struct,
+             e_backend_data_kind_table,
+           END OF ENUM e_backend_data_kinds.
+
+    TYPES: BEGIN OF ts_backend_block_param,
+             name TYPE string,
+             data TYPE ts_data,
+           END OF ts_backend_block_param.
+
+    TYPES: tt_backend_block_params TYPE TABLE OF ts_backend_block_param.
+
+    TYPES: BEGIN OF ts_backend_eval_expr_result,
+             data  TYPE ts_data,
+             kind  TYPE e_backend_data_kinds,
+             error TYPE string,
+           END OF ts_backend_eval_expr_result.
+
+    TYPES: BEGIN OF ts_backend_path_eval_result,
+             data  TYPE ts_data,
+             kind  TYPE e_backend_data_kinds,
+             error TYPE string,
+           END OF ts_backend_path_eval_result.
+
+    TYPES: BEGIN OF ts_backend_is_truthy_result,
+             truthy TYPE abap_bool,
+             error  TYPE string,
+           END OF ts_backend_is_truthy_result.
+
+    TYPES: BEGIN OF ts_backend_block_parameter,
+             name TYPE string,
+             data TYPE ts_data,
+           END OF ts_backend_block_parameter.
+
+    TYPES: tt_backend_block_parameters TYPE STANDARD TABLE OF ts_backend_block_parameter WITH DEFAULT KEY.
+
+    TYPES: BEGIN OF ts_backend_block_stack_block,
+             block  TYPE REF TO ts_parser_block,
+             params TYPE tt_backend_block_parameters,
+           END OF ts_backend_block_stack_block.
+
+    TYPES: tt_backend_block_stack TYPE TABLE OF ts_backend_block_stack_block.
+
+    DATA: mt_backend_block_stack      TYPE tt_backend_block_stack,
+          mv_backend_is_inline_helper TYPE abap_bool.
+
+    METHODS backend_build_error
+      IMPORTING
+        iv_error        TYPE string
+        is_token        TYPE ts_tokenizer_token
+      RETURNING
+        VALUE(rv_error) TYPE string.
+
+    METHODS backend_eval_body
+      IMPORTING
+        ir_block         TYPE ts_parser_body
+        is_data          TYPE ts_data OPTIONAL
+      RETURNING
+        VALUE(rs_result) TYPE ts_text_result.
+
+    METHODS backend_eval_stmt
+      IMPORTING
+        ir_stmt          TYPE REF TO data
+        is_data          TYPE ts_data
+      RETURNING
+        VALUE(rs_result) TYPE ts_text_result.
+
+    METHODS backend_eval_expr
+      IMPORTING
+        ir_stmt          TYPE REF TO data
+        is_data          TYPE ts_data
+      RETURNING
+        VALUE(rs_result) TYPE ts_backend_eval_expr_result.
+
+    METHODS backend_eval_helper
+      IMPORTING
+        ir_helper        TYPE REF TO data
+        is_data          TYPE ts_data
+      RETURNING
+        VALUE(rs_result) TYPE ts_text_result.
+
+    METHODS backend_eval_block
+      IMPORTING
+        ir_block         TYPE REF TO ts_parser_block
+        is_data          TYPE ts_data
+      RETURNING
+        VALUE(rs_result) TYPE ts_text_result.
+
+    METHODS backend_eval_block_body
+      IMPORTING
+        iv_property      TYPE string
+        it_data          TYPE tt_data OPTIONAL
+      RETURNING
+        VALUE(rs_result) TYPE ts_text_result.
+
+    METHODS backend_eval_cond_block
+      IMPORTING
+        iv_name          TYPE string
+        it_args          TYPE tt_data
+        is_data          TYPE ts_data
+      RETURNING
+        VALUE(rs_result) TYPE ts_text_result.
+
+    METHODS backend_eval_each_block
+      IMPORTING
+        iv_name          TYPE string
+        it_args          TYPE tt_data
+        is_data          TYPE ts_data
+      RETURNING
+        VALUE(rs_result) TYPE ts_text_result.
+
+    METHODS backend_eval_with_block
+      IMPORTING
+        iv_name          TYPE string
+        it_args          TYPE tt_data
+        is_data          TYPE ts_data
+      RETURNING
+        VALUE(rs_result) TYPE ts_text_result.
+
+    METHODS backend_eval_inline_helper
+      IMPORTING
+        ir_inline_helper TYPE REF TO ts_parser_inline_helper
+        is_data          TYPE ts_data
+      RETURNING
+        VALUE(rs_result) TYPE ts_text_result.
+
+    METHODS backend_eval_log_helper
+      IMPORTING
+        iv_name          TYPE string
+        it_args          TYPE tt_data
+        is_data          TYPE ts_data
+      RETURNING
+        VALUE(rs_result) TYPE ts_text_result.
+
+    METHODS backend_eval_path
+      IMPORTING
+        ir_path          TYPE REF TO ts_parser_path
+        is_data          TYPE ts_data
+      RETURNING
+        VALUE(rs_result) TYPE ts_backend_path_eval_result.
+
+    METHODS backend_get_data_type
+      IMPORTING
+        ir_data        TYPE REF TO data
+      RETURNING
+        VALUE(rv_type) TYPE string.
+
+    METHODS backend_get_data_kind
+      IMPORTING
+        ir_data        TYPE REF TO data
+      RETURNING
+        VALUE(rv_kind) TYPE e_backend_data_kinds.
+
+    METHODS backend_get_block
+      IMPORTING
+        iv_index        TYPE i
+      RETURNING
+        VALUE(rr_block) TYPE REF TO ts_backend_block_stack_block.
+
+    METHODS backend_get_last_block
+      RETURNING
+        VALUE(rr_block) TYPE REF TO ts_backend_block_stack_block.
+
+    METHODS backend_is_truthy
+      IMPORTING
+        ir_data          TYPE REF TO data
+      RETURNING
+        VALUE(rs_result) TYPE ts_backend_is_truthy_result.
+
+    METHODS backend_call_helper
+      IMPORTING
+        iv_name          TYPE string
+        it_args          TYPE tt_data OPTIONAL
+        is_data          TYPE ts_data
+      RETURNING
+        VALUE(rs_result) TYPE ts_text_result.
+
+ENDCLASS.
+
+
+
+CLASS zcl_handlebars_abap IMPLEMENTATION.
+
+  METHOD compile.
+    DATA(lo_template) = NEW zcl_handlebars_abap(  ).
+    DATA(lv_error) = lo_template->tokenizer_tokenize( iv_template_string ).
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    lv_error = lo_template->parser_parse( ).
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    " Register default block-helpers.
+    zcl_handlebars_abap=>register_helper( iv_name = lo_template->c_if     ir_object = lo_template iv_method = 'backend_eval_cond_block' ).
+    zcl_handlebars_abap=>register_helper( iv_name = lo_template->c_unless ir_object = lo_template iv_method = 'backend_eval_cond_block' ).
+    zcl_handlebars_abap=>register_helper( iv_name = lo_template->c_each   ir_object = lo_template iv_method = 'backend_eval_each_block' ).
+    zcl_handlebars_abap=>register_helper( iv_name = lo_template->c_with   ir_object = lo_template iv_method = 'backend_eval_with_block' ).
+
+    " Register default inline-helpers.
+    zcl_handlebars_abap=>register_helper( iv_name = 'log' ir_object = lo_template iv_method = 'backend_eval_log_helper' ).
+
+    rs_result-template = lo_template.
+  ENDMETHOD.
+
+  METHOD register_helper.
+    DATA(ls_helper) = VALUE ts_helper( name = iv_name method = iv_method object = ir_object ).
+    DATA(ls_find_helper_result) = zcl_handlebars_abap=>find_helper( iv_name ).
+
+    " If a corresponding helper was found, update it.
+    IF ls_find_helper_result-error IS INITIAL.
+      MOVE-CORRESPONDING ls_helper TO ls_find_helper_result-helper->*.
+    ELSE.
+      APPEND ls_helper TO zcl_handlebars_abap=>mt_helpers.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD template.
+    DATA(ls_result) = me->backend_eval_stmt(
+      ir_stmt = me->mr_template
+      is_data = VALUE ts_data(
+        this = ir_data
+      )
+    ).
+    DATA(lv_error) = ls_result-error.
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    rs_result-text = ls_result-text.
+  ENDMETHOD.
+
+
+  METHOD fn.
+    rs_result = me->backend_eval_block_body( iv_property = 'body' it_data = it_data ).
+  ENDMETHOD.
+
+
+  METHOD inverse.
+    rs_result = me->backend_eval_block_body( iv_property = 'else' it_data = it_data ).
+  ENDMETHOD.
+
+
+  METHOD find_helper.
+    READ TABLE zcl_handlebars_abap=>mt_helpers REFERENCE INTO DATA(lr_helper) WHERE name = iv_name.
+
+    IF sy-subrc <> 0.
+      rs_result-error = |No helper found for { iv_name }|.
+      RETURN.
+    ENDIF.
+
+    rs_result-helper = lr_helper.
+  ENDMETHOD.
+
+
+  METHOD tokenizer_tokenize.
+    TYPES: BEGIN OF ts_tokenizer_token_mapping,
+             pattern TYPE string,
+             type    TYPE e_tokenizer_token_types,
+           END OF ts_tokenizer_token_mapping.
+
+    TYPES: tt_token_mappings TYPE STANDARD TABLE OF ts_tokenizer_token_mapping WITH DEFAULT KEY.
+
+    TYPES: BEGIN OF ts_match_mapping,
+             match TYPE match_result,
+             type  TYPE e_tokenizer_token_types,
+           END OF ts_match_mapping.
+
+    CONSTANTS: c_space          TYPE string VALUE '\s+',
+               c_start          TYPE string VALUE '\#',
+               c_end            TYPE string VALUE '\/',
+               c_pipe           TYPE string VALUE '\|',
+               c_at             TYPE string VALUE '\@',
+               c_as             TYPE string VALUE 'as',
+               c_null           TYPE string VALUE 'null',
+               c_undefined      TYPE string VALUE 'undefined',
+               c_number_pattern TYPE string VALUE '(-|\+)?\d+(.\d+)?',
+               c_path_pattern_1 TYPE string VALUE '(\.\.\/)*\w+(\.\w+)*',
+               c_path_pattern_2 TYPE string VALUE '(\.\.\/)',
+               c_path_pattern_3 TYPE string VALUE '\.'.
+
+    DATA: lv_previous_offset TYPE i VALUE 0,
+          lv_text            TYPE string.
+
+    DATA(lt_char_mappings) = VALUE tt_token_mappings(
+      ( pattern = c_space type = e_token_type_space )
+      ( pattern = c_start type = e_token_type_start )
+      ( pattern = c_end   type = e_token_type_end   )
+      ( pattern = c_at    type = e_token_type_at    )
+      ( pattern = c_pipe  type = e_token_type_pipe  )
+    ).
+
+    DATA(lt_keyword_mappings) = VALUE tt_token_mappings(
+      ( pattern = c_as             type = e_token_type_as             )
+      ( pattern = c_else           type = e_token_type_else           )
+      ( pattern = c_null           type = e_token_type_null           )
+      ( pattern = c_undefined      type = e_token_type_undefined      )
+      ( pattern = c_true           type = e_token_type_bool_literal   )
+      ( pattern = c_false          type = e_token_type_bool_literal   )
+      ( pattern = c_number_pattern type = e_token_type_number_literal )
+      ( pattern = c_path_pattern_1 type = e_token_type_path           )
+      ( pattern = c_path_pattern_2 type = e_token_type_path           )
+      ( pattern = c_path_pattern_3 type = e_token_type_path           )
+    ).
+
+    DATA(lv_text_length) = 0.
+
+    " Get all placeholders.
+    FIND ALL OCCURRENCES OF PCRE '\{\{(.*?)\}\}' IN iv_template_string RESULTS DATA(lt_matches).
+
+    LOOP AT lt_matches INTO DATA(ls_placeholder_match).
+      DATA(lv_placeholder_offset) = ls_placeholder_match-offset.
+      DATA(lv_placeholder_length) = ls_placeholder_match-length.
+
+      lv_text_length = lv_placeholder_offset - lv_previous_offset.
+      lv_text = iv_template_string+lv_previous_offset(lv_text_length).
+
+      IF lv_text_length > 0.
+        me->tokenizer_add_token( iv_value = lv_text iv_position = lv_previous_offset iv_type = e_token_type_text ).
+      ENDIF.
+
+      " Update previous offset.
+      lv_previous_offset = lv_placeholder_offset + lv_placeholder_length.
+
+      " Get submatch (actual placeholder content).
+      DATA(ls_submatch) = ls_placeholder_match-submatches[ 1 ].
+      DATA(lv_content) = iv_template_string+ls_submatch-offset(ls_submatch-length).
+      DATA(lv_i) = 0.
+      DATA(lv_collecting_string) = abap_false.
+
+      DATA: lv_prev_c(1)                TYPE c,
+            lv_collecting_string_before TYPE abap_bool,
+            lv_collected_string_start   TYPE i,
+            lv_collected_string         TYPE string.
+
+      CLEAR lv_prev_c.
+
+      " Iterate string to find parts.
+      DO.
+        DATA(lv_c) = lv_content+lv_i(1).
+        DATA(lv_subcontent) = lv_content+lv_i.
+
+        " Handle string collection.
+        IF lv_c = '"'.
+          lv_collecting_string_before = lv_collecting_string.
+
+          IF lv_collecting_string = abap_false.
+            lv_collecting_string = abap_true.
+            lv_collected_string_start = lv_i.
+          ELSEIF lv_prev_c <> '\'.
+            DATA(lv_collected_string_offset) = lv_collected_string_start + 1.
+
+            lv_collected_string = substring( val = lv_content off = lv_collected_string_offset len = lv_i - lv_collected_string_offset ).
+            lv_collecting_string = abap_false.
+          ENDIF.
+        ENDIF.
+
+        DATA(lv_token_position) = lv_placeholder_offset + lv_i + 1.
+
+        " If collecting string has changed, handle string.
+        IF lv_collecting_string_before <> lv_collecting_string.
+
+          " If not collecting anymore, add string to tokens.
+          IF lv_collecting_string = abap_false.
+            me->tokenizer_add_token( iv_value = lv_collected_string iv_position = lv_token_position iv_type = e_token_type_string_literal ).
+            lv_collecting_string_before = lv_collecting_string.
+          ENDIF.
+        ELSE.
+          DATA: ls_match         TYPE match_result,
+                ls_match_mapping TYPE ts_match_mapping.
+
+          CLEAR ls_match_mapping.
+
+          " Try to find characters.
+          LOOP AT lt_char_mappings INTO DATA(ls_mapping).
+            FIND PCRE |^({ ls_mapping-pattern })| IN lv_subcontent RESULTS ls_match.
+
+            IF sy-subrc = 0.
+              ls_match_mapping = VALUE #(
+                match = ls_match
+                type = ls_mapping-type
+              ).
+              EXIT.
+            ENDIF.
+          ENDLOOP.
+
+          DATA lv_part TYPE string.
+
+          " If nothing found yet, try to find keywords.
+          IF ls_match_mapping IS INITIAL.
+            LOOP AT lt_keyword_mappings INTO ls_mapping.
+              DATA(lv_pattern) = |^({ ls_mapping-pattern })(?=\\W\|$)|.
+
+              FIND PCRE lv_pattern IN lv_subcontent RESULTS ls_match.
+
+              IF sy-subrc = 0.
+                ls_match_mapping = VALUE #(
+                  match = ls_match
+                  type = ls_mapping-type
+                ).
+                EXIT.
+              ENDIF.
+            ENDLOOP.
+          ENDIF.
+
+          " If a match was found, handle it.
+          IF ls_match_mapping IS NOT INITIAL.
+            ls_match = ls_match_mapping-match.
+            lv_part = lv_subcontent+ls_match-offset(ls_match-length).
+
+            DATA(lv_type) = ls_mapping-type.
+
+            " Skip spaces.
+            IF lv_type <> e_token_type_space.
+              me->tokenizer_add_token( iv_value = lv_part iv_position = lv_token_position iv_type = lv_type ).
+            ENDIF.
+
+            lv_i = lv_i + ( ls_match-length - 1 ).
+
+            " If nothing found, cancel with error.
+          ELSE.
+            rv_error = |Unexpected character '{ lv_c }' at position { lv_token_position }|.
+          ENDIF.
+        ENDIF.
+
+        lv_i = lv_i + 1.
+        lv_prev_c = lv_c.
+
+        IF lv_i >= strlen( lv_content ).
+          EXIT.
+        ENDIF.
+      ENDDO.
+
+      me->tokenizer_add_token( iv_value = '' iv_position = lv_i iv_type = e_token_type_eop ).
+    ENDLOOP.
+
+    lv_text = iv_template_string+lv_previous_offset.
+    lv_text_length = strlen( lv_text ).
+
+    IF lv_text_length > 0.
+      me->tokenizer_add_token( iv_value = lv_text iv_position = lv_previous_offset iv_type = e_token_type_text ).
+    ENDIF.
+
+    " Terminate with EOF-token.
+    me->tokenizer_add_token( iv_value = '' iv_position = -1 iv_type = e_token_type_eof ).
+  ENDMETHOD.
+
+
+  METHOD tokenizer_add_token.
+    APPEND VALUE #( value = iv_value position = iv_position type = iv_type ) TO me->mt_tokenizer_tokens.
+  ENDMETHOD.
+
+
+  METHOD parser_parse.
+    me->mv_parser_index = 1.
+
+    DATA(ls_result) = me->parser_eval_template( ).
+    DATA(lv_error) = ls_result-error.
+
+    IF lv_error IS NOT INITIAL.
+      rv_error = lv_error.
+      RETURN.
+    ENDIF.
+
+    me->mr_template = ls_result-stmt.
+  ENDMETHOD.
+
+
+  METHOD parser_build_error.
+    rv_error = |{ iv_error } at position { is_token-position }|.
+  ENDMETHOD.
+
+
+  METHOD parser_build_expected_error.
+    rv_error = me->parser_build_error( iv_error = |Expected { iv_error }| is_token = is_token ).
+  ENDMETHOD.
+
+
+  METHOD parser_peek_at.
+    DATA(lv_index) = me->mv_parser_index + iv_at.
+
+    CLEAR rs_token.
+
+    IF lv_index <= lines( me->mt_tokenizer_tokens ).
+      rs_token = me->mt_tokenizer_tokens[ lv_index ].
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD parser_peek.
+    rs_token = me->parser_peek_at( iv_at = 0 ).
+  ENDMETHOD.
+
+
+  METHOD parser_eat.
+    DATA(lv_index) = me->mv_parser_index.
+
+    rs_token = me->parser_peek( ).
+
+    IF lv_index < lines( me->mt_tokenizer_tokens ).
+      me->mv_parser_index = lv_index + 1.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD parser_eval_stmt.
+    DATA ls_result TYPE ts_parser_eval_result.
+
+    DATA(ls_token) = me->parser_peek( ).
+    DATA(ls_next_token) = me->parser_peek_at( 1 ).
+    DATA(lv_valid) = abap_true.
+    DATA(lv_expect_eop) = abap_true.
+
+    CASE ls_token-type.
+      WHEN e_token_type_start.
+        CASE ls_next_token-type.
+          WHEN e_token_type_path.
+            ls_result = me->parser_eval_block( ).
+
+          WHEN OTHERS.
+            lv_valid = abap_false.
+        ENDCASE.
+
+      WHEN e_token_type_text.
+        me->parser_eat( ).
+        ls_result-stmt = NEW ts_parser_text( value = ls_token-value token = ls_token ).
+        lv_expect_eop = abap_false.
+
+      WHEN OTHERS.
+        " If the next token is not EOP, it's an inline-helper.
+        IF ls_next_token-type <> e_token_type_eop.
+          ls_result = me->parser_eval_inline_helper( ).
+        ELSE.
+          ls_result = me->parser_eval_expr( ).
+        ENDIF.
+    ENDCASE.
+
+    DATA(lv_error) = rs_result-error.
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    IF lv_expect_eop <> abap_false.
+
+      " Expect end-of-placeholder token.
+      lv_error = me->parser_check_eop( ).
+
+      IF lv_error IS NOT INITIAL.
+        rs_result-error = lv_error.
+        RETURN.
+      ENDIF.
+    ENDIF.
+
+    IF lv_valid <> abap_true.
+      rs_result-error = me->parser_build_error( iv_error = 'Unknown token' is_token = ls_token ).
+      RETURN.
+    ENDIF.
+
+    rs_result = ls_result.
+  ENDMETHOD.
+
+
+  METHOD parser_eval_stmts.
+    DATA lt_statements TYPE tt_parser_statements.
+    DATA(lt_termination_tokens) = it_termination_token_types.
+
+    " Make sure, EOF also terminates execution.
+    APPEND e_token_type_eof TO lt_termination_tokens.
+
+    DO.
+      DATA(ls_token) = me->parser_peek( ).
+
+      " Check if the current token is a termination token.
+      IF xsdbool( VALUE #( lt_termination_tokens[ table_line = ls_token-type ] OPTIONAL ) IS NOT INITIAL ) = abap_true.
+        EXIT.
+      ENDIF.
+
+      " Evaluate statement.
+      DATA(ls_result) = me->parser_eval_stmt( ).
+      DATA(lv_error) = ls_result-error.
+
+      IF lv_error IS NOT INITIAL.
+        rs_results-error = lv_error.
+        RETURN.
+      ENDIF.
+
+      APPEND ls_result-stmt TO lt_statements.
+    ENDDO.
+
+    rs_results-stmts = lt_statements.
+  ENDMETHOD.
+
+
+  METHOD parser_eval_template.
+    DATA(ls_template) = NEW ts_parser_template( ).
+    DATA(ls_result) = me->parser_eval_stmts( ).
+    DATA(lv_error) = ls_result-error.
+
+    ls_template->body = VALUE #( statements = ls_result-stmts ).
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    rs_result-stmt = ls_template.
+  ENDMETHOD.
+
+
+  METHOD parser_eval_block.
+    DATA(ls_token) = me->parser_eat( ).
+    DATA(ls_start_token) = ls_token.
+
+    IF ls_token-type <> e_token_type_start.
+      rs_result-error = me->parser_build_expected_error( iv_error = '#' is_token = ls_token ).
+      RETURN.
+    ENDIF.
+
+    DATA(ls_eval_helper_result) = me->parser_eval_helper_name( ).
+    DATA(lv_error) = ls_eval_helper_result-error.
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    DATA(lv_start_helper_name) = ls_eval_helper_result-name.
+    DATA(ls_eval_args_result) = me->parser_eval_args( VALUE #( ( e_token_type_as ) ) ).
+
+    lv_error = ls_eval_args_result-error.
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    DATA(lt_args) = ls_eval_args_result-expressions.
+    ls_token = me->parser_peek( ).
+
+    " If next token is "as", block parameters are provided.
+    IF ls_token-type = e_token_type_as.
+      CONSTANTS c_pipe TYPE string VALUE '|'.
+
+      me->parser_eat( ).
+      ls_token = me->parser_eat( ).
+
+      " Check if parameters get introduced via pipe.
+      IF ls_token-type <> e_token_type_pipe.
+        rs_result-error = me->parser_build_expected_error( iv_error = c_pipe is_token = ls_token ).
+        RETURN.
+      ENDIF.
+
+      DATA lt_params TYPE string_table.
+
+      DO.
+        ls_token = me->parser_peek( ).
+
+        " Cancel loop as soon as something else than a path expression gets discovered.
+        IF ls_token-type <> e_token_type_path.
+          EXIT.
+        ENDIF.
+
+        DATA(ls_eval_path_result) = me->parser_eval_path( ).
+        lv_error = ls_eval_path_result-error.
+
+        IF lv_error IS NOT INITIAL.
+          rs_result-error = lv_error.
+          RETURN.
+        ENDIF.
+
+        DATA lr_path TYPE REF TO ts_parser_path.
+        lr_path ?= ls_eval_path_result-stmt.
+
+        IF lr_path->is_identifier <> abap_true.
+          rs_result-error = me->parser_build_expected_error( iv_error = 'identifier' is_token = ls_token ).
+          RETURN.
+        ENDIF.
+
+        APPEND lr_path->parts[ 1 ] TO lt_params.
+      ENDDO.
+
+      ls_token = me->parser_eat( ).
+
+      " Check if parameters get terminated via pipe.
+      IF ls_token-type <> e_token_type_pipe.
+        rs_result-error = me->parser_build_expected_error( iv_error = c_pipe is_token = ls_token ).
+        RETURN.
+      ENDIF.
+    ENDIF.
+
+    " Expect end-of-placeholder token.
+    lv_error = me->parser_check_eop( ).
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    ls_token = me->parser_peek( ).
+
+    DATA(ls_stmts_result) = me->parser_eval_stmts(
+      it_termination_token_types = VALUE #( ( e_token_type_else ) ( e_token_type_end ) ) " Terminate on else and /.
+    ).
+    lv_error = ls_stmts_result-error.
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    " Create instance of ts_parser_block on heap.
+    DATA(ls_block) = NEW ts_parser_block(
+      name   = lv_start_helper_name
+      args   = lt_args
+      body   = VALUE ts_parser_body( statements = ls_stmts_result-stmts token = ls_token )
+      params = lt_params
+      token  = ls_start_token
+    ).
+
+    ls_token = me->parser_peek( ).
+
+    " If the statements were terminated by an else, parse the rest.
+    IF ls_token-type = e_token_type_else.
+      me->parser_eat( ).
+
+      " Expect end-of-placeholder token.
+      lv_error = me->parser_check_eop( ).
+
+      IF lv_error IS NOT INITIAL.
+        rs_result-error = lv_error.
+        RETURN.
+      ENDIF.
+
+      ls_stmts_result = me->parser_eval_stmts(
+        it_termination_token_types = VALUE #( ( e_token_type_end ) ) " Terminate on /.
+      ).
+      lv_error = ls_stmts_result-error.
+
+      IF lv_error IS NOT INITIAL.
+        rs_result-error = lv_error.
+        RETURN.
+      ENDIF.
+
+      ls_block->else = VALUE ts_parser_body( statements = ls_stmts_result-stmts ).
+    ENDIF.
+
+    ls_token = me->parser_eat( ).
+
+    IF ls_token-type <> e_token_type_end.
+      rs_result-error = me->parser_build_expected_error( iv_error = '/' is_token = ls_token ).
+      RETURN.
+    ENDIF.
+
+    ls_token = me->parser_eat( ).
+
+    DATA(lv_end_helper_name) = ls_token-value.
+
+    IF ls_token-type <> e_token_type_path OR lv_end_helper_name <> lv_start_helper_name.
+      rs_result-error = me->parser_build_expected_error( iv_error = |{ lv_start_helper_name } but got { lv_end_helper_name }| is_token = ls_token ).
+      RETURN.
+    ENDIF.
+
+    rs_result-stmt = ls_block.
+  ENDMETHOD.
+
+
+  METHOD parser_eval_inline_helper.
+    DATA(ls_token) = me->parser_peek( ).
+    DATA(ls_eval_helper_result) = me->parser_eval_helper_name( ).
+    DATA(lv_error) = ls_eval_helper_result-error.
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    DATA(ls_eval_args_result) = me->parser_eval_args( ).
+    lv_error = ls_eval_args_result-error.
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    rs_result-stmt = NEW ts_parser_inline_helper(
+      name  = ls_eval_helper_result-name
+      args  = ls_eval_args_result-expressions
+      token = ls_token
+    ).
+  ENDMETHOD.
+
+
+  METHOD parser_eval_expr.
+    DATA lr_data TYPE REF TO data.
+
+    DATA(ls_token) = me->parser_peek( ).
+    DATA(lv_value) = ls_token-value.
+    DATA(lv_eat) = abap_true.
+
+    CASE ls_token-type.
+      WHEN e_token_type_bool_literal.
+        lr_data = NEW ts_parser_bool_literal( value = xsdbool( lv_value <> c_false ) token = ls_token ).
+
+      WHEN e_token_type_number_literal.
+        lr_data = NEW ts_parser_float_literal( value = CONV i( lv_value ) token = ls_token ).
+
+      WHEN e_token_type_string_literal.
+        lr_data = NEW ts_parser_string_literal( value = lv_value token = ls_token ).
+
+      WHEN e_token_type_path.
+        DATA(ls_result) = me->parser_eval_path( ).
+        DATA(lv_error) = ls_result-error.
+
+        IF lv_error IS NOT INITIAL.
+          rs_result-error = lv_error.
+          RETURN.
+        ENDIF.
+
+        lr_data = ls_result-stmt.
+        lv_eat = abap_false.
+
+      WHEN e_token_type_null.
+        lr_data = NEW ts_parser_null_literal( token = ls_token ).
+
+      WHEN e_token_type_undefined.
+        lr_data = NEW ts_parser_undefined_literal( token = ls_token ).
+
+      WHEN OTHERS.
+        rs_result-error = me->parser_build_error( iv_error = |Unknown expression type| is_token = ls_token ).
+    ENDCASE.
+
+    IF lv_eat <> abap_false.
+      me->parser_eat( ).
+    ENDIF.
+
+    rs_result-stmt = lr_data.
+  ENDMETHOD.
+
+
+  METHOD parser_eval_path.
+    DATA lt_collected_parts TYPE string_table.
+
+    DATA(ls_token) = me->parser_eat( ).
+
+    IF ls_token-type <> e_token_type_path.
+      rs_result-error = me->parser_build_expected_error( iv_error = 'path' is_token = ls_token ).
+      RETURN.
+    ENDIF.
+
+    DATA(lv_value) = ls_token-value.
+
+    " First split at slashes.
+    SPLIT lv_value AT '/' INTO TABLE DATA(lt_relative_parts).
+
+    LOOP AT lt_relative_parts INTO DATA(lv_relative_part).
+      IF lv_relative_part = c_relative.
+        APPEND lv_relative_part TO lt_collected_parts.
+      ELSE.
+
+        " Now split at single dots.
+        SPLIT lv_relative_part AT '.' INTO TABLE DATA(lt_parts).
+
+        LOOP AT lt_parts INTO DATA(lv_part).
+          APPEND lv_part TO lt_collected_parts.
+        ENDLOOP.
+      ENDIF.
+    ENDLOOP.
+
+    rs_result-stmt = NEW ts_parser_path(
+      parts         = lt_collected_parts
+      is_identifier = xsdbool( lines( lt_collected_parts ) = 1 AND lt_collected_parts[ 1 ] <> c_relative )
+      token         = ls_token
+    ).
+  ENDMETHOD.
+
+
+  METHOD parser_eval_helper_name.
+    DATA(ls_token) = me->parser_peek( ).
+    DATA(lv_name_error) = me->parser_build_expected_error( iv_error = 'helper name' is_token = ls_token ).
+
+    IF ls_token-type <> e_token_type_path.
+      rs_result-error = lv_name_error.
+      RETURN.
+    ENDIF.
+
+    DATA(ls_result) = me->parser_eval_path( ).
+    DATA(lv_error) = ls_result-error.
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    DATA lr_path TYPE REF TO ts_parser_path.
+    lr_path ?= ls_result-stmt.
+
+    IF lr_path->is_identifier <> abap_true.
+      rs_result-error = lv_name_error.
+      RETURN.
+    ENDIF.
+
+    rs_result-name = ls_token-value.
+  ENDMETHOD.
+
+
+  METHOD parser_eval_args.
+    DATA lt_args TYPE tt_parser_expressions.
+    DATA(lt_termination_token_types) = it_termination_token_types.
+
+    " Add safety net.
+    APPEND e_token_type_eop TO lt_termination_token_types.
+    APPEND e_token_type_eof TO lt_termination_token_types.
+
+    DO.
+      DATA(ls_token) = me->parser_peek( ).
+      DATA(lv_found_type) = VALUE #( lt_termination_token_types[ table_line = ls_token-type ] OPTIONAL ).
+
+      IF lv_found_type IS NOT INITIAL.
+        EXIT.
+      ENDIF.
+
+      DATA(ls_expr_result) = me->parser_eval_expr( ).
+      DATA(lv_error) = ls_expr_result-error.
+
+      IF lv_error IS NOT INITIAL.
+        rs_result-error = lv_error.
+        RETURN.
+      ENDIF.
+
+      APPEND ls_expr_result-stmt TO lt_args.
+    ENDDO.
+
+    rs_result-expressions = lt_args.
+  ENDMETHOD.
+
+
+  METHOD parser_check_eop.
+    DATA ls_token TYPE ts_tokenizer_token.
+
+    IF lv_peek <> abap_false.
+      ls_token = me->parser_peek( ).
+    ELSE.
+      ls_token = me->parser_eat( ).
+    ENDIF.
+
+    IF ls_token-type <> e_token_type_eop.
+      rv_error = me->parser_build_expected_error( iv_error = 'End of placeholder' is_token = ls_token ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD backend_build_error.
+    rv_error = me->parser_build_error( iv_error = iv_error is_token = is_token ).
+  ENDMETHOD.
+
+
+  METHOD backend_eval_body.
+    DATA lv_text TYPE string.
+
+    LOOP AT ir_block-statements INTO DATA(lr_stmt).
+      DATA(ls_result) = me->backend_eval_stmt(
+        ir_stmt = lr_stmt
+        is_data = is_data
+      ).
+      DATA(lv_error) = ls_result-error.
+
+      IF lv_error IS NOT INITIAL.
+        rs_result-error = lv_error.
+        RETURN.
+      ENDIF.
+
+      lv_text = |{ lv_text }{ ls_result-text }|.
+    ENDLOOP.
+
+    rs_result-text = lv_text.
+  ENDMETHOD.
+
+
+  METHOD backend_eval_stmt.
+    DATA(lv_type) = me->backend_get_data_type( ir_stmt ).
+
+    CASE lv_type.
+      WHEN 'ts_parser_template'.
+        DATA lr_template TYPE REF TO ts_parser_template.
+        lr_template ?= ir_stmt.
+
+        rs_result = me->backend_eval_body(
+          ir_block = lr_template->body
+          is_data  = is_data
+        ).
+
+      WHEN 'ts_parser_text'.
+        DATA lr_text TYPE REF TO ts_parser_text.
+        lr_text ?= ir_stmt.
+
+        rs_result-text = lr_text->value.
+
+      WHEN 'ts_parser_block'.
+        DATA lr_conditional_block TYPE REF TO ts_parser_block.
+        lr_conditional_block ?= ir_stmt.
+
+        rs_result = me->backend_eval_block(
+          ir_block = lr_conditional_block
+          is_data  = is_data
+        ).
+
+      WHEN 'ts_parser_inline_helper'.
+        DATA lr_inline_helper TYPE REF TO ts_parser_inline_helper.
+        lr_inline_helper ?= ir_stmt.
+
+        rs_result = me->backend_eval_inline_helper(
+          ir_inline_helper = lr_inline_helper
+          is_data          = is_data
+        ).
+
+      WHEN OTHERS.
+        DATA(ls_eval_expr_result) = me->backend_eval_expr(
+          ir_stmt = ir_stmt
+          is_data = is_data
+        ).
+        DATA(lv_error) = ls_eval_expr_result-error.
+        DATA(lv_kind) = ls_eval_expr_result-kind.
+
+        IF lv_error IS NOT INITIAL.
+          rs_result-error = lv_error.
+          RETURN.
+        ELSEIF lv_kind <> e_backend_data_kind_simple.
+          rs_result-error = |Cannot convert { lv_kind } to text|.
+          RETURN.
+        ENDIF.
+
+        rs_result-text = ls_eval_expr_result-data-this->*.
+    ENDCASE.
+  ENDMETHOD.
+
+
+  METHOD backend_eval_expr.
+    DATA: ls_data TYPE ts_data,
+          lr_data TYPE REF TO data.
+
+    DATA(lv_type) = me->backend_get_data_type( ir_stmt ).
+    DATA(lv_simple_type) = abap_true.
+
+    CASE lv_type.
+      WHEN 'ts_parser_bool_literal'.
+        lr_data = ir_stmt.
+
+      WHEN 'ts_parser_float_literal'.
+        lr_data = ir_stmt.
+
+      WHEN 'ts_parser_string_literal'.
+        lr_data = ir_stmt.
+
+      WHEN 'ts_parser_null_literal' OR 'ts_parser_undefined'.
+        lr_data = ir_stmt.
+
+      WHEN 'ts_parser_path'.
+        DATA lr_path TYPE REF TO ts_parser_path.
+        lr_path ?= ir_stmt.
+
+        DATA(ls_result) = me->backend_eval_path(
+          ir_path = lr_path
+          is_data = is_data
+        ).
+        DATA(lv_error) = ls_result-error.
+
+        IF lv_error IS NOT INITIAL.
+          rs_result-error = lv_error.
+          RETURN.
+        ENDIF.
+
+        ls_data = ls_result-data.
+        lv_simple_type = abap_false.
+
+      WHEN OTHERS.
+        rs_result-error = |Unknown expression type { lv_type }|.
+    ENDCASE.
+
+    " If simple type, create ts_data structure here.
+    IF lv_simple_type = abap_true.
+      ls_data = VALUE #(
+        this = lr_data
+      ).
+    ENDIF.
+
+    rs_result-data = ls_data.
+    rs_result-kind = me->backend_get_data_kind( ls_data-this ).
+  ENDMETHOD.
+
+
+  METHOD backend_eval_helper.
+    DATA: lt_args  TYPE tt_data,
+          lv_error TYPE string.
+
+    " "Downcast" to common base.
+    DATA(lr_helper) = NEW ts_parser_helper( ).
+    MOVE-CORRESPONDING ir_helper->* TO lr_helper->*.
+
+    IF lr_helper->name IS INITIAL.
+      rs_result-error = 'Invalid helper cast'.
+      RETURN.
+    ENDIF.
+
+    " Evaluate arguments.
+    LOOP AT lr_helper->args INTO DATA(ls_arg).
+      DATA(ls_result) = me->backend_eval_expr(
+        ir_stmt = ls_arg
+        is_data = is_data
+      ).
+      lv_error = ls_result-error.
+
+      IF lv_error IS NOT INITIAL.
+        rs_result-error = lv_error.
+        RETURN.
+      ENDIF.
+
+      APPEND ls_result-data TO lt_args.
+    ENDLOOP.
+
+    " Find out if it's a block- or an inline-helper.
+    DATA lr_block TYPE REF TO ts_parser_block.
+
+    TRY.
+        lr_block ?= ir_helper.
+      CATCH cx_root.
+        " Nothing to do.
+    ENDTRY.
+
+    DATA(lv_is_block) = xsdbool( lr_block IS BOUND ).
+
+    " Push current block to stack for context information.
+    IF lv_is_block = abap_true.
+      APPEND VALUE #( block = lr_block ) TO me->mt_backend_block_stack.
+    ELSE.
+      me->mv_backend_is_inline_helper = abap_true.
+    ENDIF.
+
+    rs_result = me->backend_call_helper(
+      iv_name = lr_helper->name
+      it_args = lt_args
+      is_data = is_data
+    ).
+
+    " Pop last entry from block stack.
+    IF lv_is_block = abap_true.
+      DELETE me->mt_backend_block_stack INDEX lines( me->mt_backend_block_stack ).
+    ELSE.
+      me->mv_backend_is_inline_helper = abap_false.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD backend_eval_block.
+    rs_result = me->backend_eval_helper(
+      ir_helper = ir_block
+      is_data   = is_data
+    ).
+  ENDMETHOD.
+
+  METHOD backend_eval_block_body.
+
+    " Only allow fn-/reverse-invocation if current helper is not an inline-element.
+    IF me->mv_backend_is_inline_helper = abap_false.
+      DATA(lr_block) = me->backend_get_last_block( ).
+
+      " Return nothing. This method is not meant to be called externally.
+      IF lr_block IS NOT BOUND.
+        RETURN.
+      ENDIF.
+
+      DATA(lr_parser_block) = lr_block->block.
+
+      DATA ls_body TYPE ts_parser_body.
+      ASSIGN COMPONENT iv_property OF STRUCTURE lr_parser_block->* TO FIELD-SYMBOL(<body>).
+      ls_body = <body>.
+
+      CLEAR lr_block->params.
+      DATA(lv_index) = 1.
+
+      " Fill block parameters with values.
+      LOOP AT it_data INTO DATA(ls_data).
+        READ TABLE lr_parser_block->params INTO DATA(ls_parser_block_param) INDEX lv_index.
+
+        " If no parameter could be read for the current index, no more
+        " parameters have been provided.
+        IF sy-subrc <> 0.
+          EXIT.
+        ENDIF.
+
+        APPEND VALUE #( name = ls_parser_block_param data = ls_data ) TO lr_block->params.
+        lv_index = lv_index + 1.
+      ENDLOOP.
+
+      ls_data = VALUE #( it_data[ 1 ] OPTIONAL ).
+
+      rs_result = me->backend_eval_body(
+        ir_block = ls_body
+        is_data  = ls_data
+      ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD backend_eval_cond_block.
+
+    DATA(lv_lines) = lines( it_args ).
+
+    IF lv_lines <> 1.
+      rs_result-error = |Expected exactly 1 argument but got { lv_lines }|.
+    ENDIF.
+
+    DATA(lr_condition) = it_args[ 1 ]-this.
+    DATA(ls_truthy_result) = me->backend_is_truthy( lr_condition ).
+    DATA(lv_error) = ls_truthy_result-error.
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    DATA(lv_condition_is_true) = xsdbool( ls_truthy_result-truthy = abap_true ).
+
+    " If unless, reverse the condition result.
+    IF iv_name = c_unless.
+      lv_condition_is_true = xsdbool( lv_condition_is_true = abap_false ).
+    ENDIF.
+
+    IF lv_condition_is_true = abap_true.
+      rs_result = me->fn( VALUE #( ( is_data ) ) ).
+    ELSE.
+      rs_result = me->inverse( VALUE #( ( is_data ) ) ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD backend_eval_each_block.
+    DATA(lv_lines) = lines( it_args ).
+
+    IF lv_lines <> 1.
+      rs_result-error = |Expected exactly 1 argument but got { lv_lines }|.
+    ENDIF.
+
+    DATA: ls_result TYPE ts_text_result,
+          lv_error  TYPE string.
+
+    DATA(lr_iterable) = it_args[ 1 ]-this.
+    DATA(lv_type) = me->backend_get_data_kind( lr_iterable ).
+    DATA(ls_truthy_result) = me->backend_is_truthy( lr_iterable ).
+
+    lv_error = ls_truthy_result-error.
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    IF ls_truthy_result-truthy = abap_true.
+      DATA ls_data TYPE ts_data.
+      DATA(lv_text) = VALUE string( ).
+
+      CASE lv_type.
+        WHEN e_backend_data_kind_struct.
+          DATA(lo_struct_desc) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data_ref( lr_iterable ) ).
+          DATA(lt_components) = lo_struct_desc->get_components( ).
+
+          IF lines( lt_components ) > 0.
+            LOOP AT lt_components INTO DATA(ls_field).
+              DATA(lv_field_name) = ls_field-name.
+
+              ASSIGN COMPONENT lv_field_name OF STRUCTURE lr_iterable->* TO FIELD-SYMBOL(<field>).
+
+              GET REFERENCE OF <field> INTO DATA(lr_field).
+              GET REFERENCE OF lv_field_name INTO DATA(lr_key).
+
+              ls_data = VALUE ts_data(
+                this   = lr_field
+                parent = lr_iterable
+              ).
+              DATA(ls_key) = VALUE ts_data(
+                this = lr_key
+              ).
+
+              ls_result = me->fn( VALUE #( ( ls_data ) ( ls_key ) ) ).
+
+              lv_error = ls_result-error.
+
+              IF lv_error IS NOT INITIAL.
+                rs_result-error = lv_error.
+                RETURN.
+              ENDIF.
+
+              lv_text = |{ lv_text }{ ls_result-text }|.
+            ENDLOOP.
+          ENDIF.
+
+        WHEN e_backend_data_kind_table.
+          FIELD-SYMBOLS: <table> TYPE ANY TABLE.
+
+          ASSIGN lr_iterable->* TO <table>.
+          DATA(lv_index) = 0. " 0 to stay consistent with Handlebars' implementation.
+
+          LOOP AT <table> ASSIGNING FIELD-SYMBOL(<row>).
+            DATA lr_row TYPE REF TO data.
+            DATA(lo_row_desc) = cl_abap_typedescr=>describe_by_data( <row> ).
+
+            " If row is bound, it's a reference, otherwise it's a value.
+            IF lo_row_desc->kind = lo_row_desc->kind_ref.
+              lr_row = <row>.
+            ELSE.
+              GET REFERENCE OF <row> INTO lr_row.
+            ENDIF.
+
+            GET REFERENCE OF lv_index INTO DATA(lr_index).
+
+            ls_data = VALUE ts_data(
+              this   = lr_row
+              parent = lr_iterable
+            ).
+            DATA(ls_index) = VALUE ts_data(
+              this = lr_index
+            ).
+
+            ls_result = me->fn( VALUE #( ( ls_data ) ( ls_index ) ) ).
+            lv_error = ls_result-error.
+
+            IF lv_error IS NOT INITIAL.
+              rs_result-error = lv_error.
+              RETURN.
+            ENDIF.
+
+            lv_text = |{ lv_text }{ ls_result-text }|.
+            lv_index = lv_index + 1.
+          ENDLOOP.
+
+        WHEN OTHERS.
+          rs_result-error = 'Data is neither a structure nor an object'.
+          RETURN.
+      ENDCASE.
+
+      rs_result-text = lv_text.
+    ELSE.
+      rs_result = me->inverse( VALUE #( ( is_data ) ) ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD backend_eval_with_block.
+    DATA(lv_lines) = lines( it_args ).
+
+    IF lv_lines <> 1.
+      rs_result-error = |Expected exactly 1 argument but got { lv_lines }|.
+    ENDIF.
+
+    DATA(lr_data) = it_args[ 1 ].
+    DATA(ls_truthy_result) = me->backend_is_truthy( lr_data-this ).
+    DATA(lv_error) = ls_truthy_result-error.
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    IF ls_truthy_result-truthy = abap_true.
+      rs_result = me->fn( VALUE #( ( lr_data ) ) ).
+    ELSE.
+      rs_result = me->inverse( VALUE #( ( lr_data ) ) ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD backend_eval_inline_helper.
+    rs_result = me->backend_eval_helper(
+      ir_helper = ir_inline_helper
+      is_data   = is_data
+    ).
+  ENDMETHOD.
+
+
+  METHOD backend_eval_log_helper.
+    DATA lv_log_text TYPE string.
+
+    LOOP AT it_args INTO DATA(ls_arg).
+      IF lv_log_text <> ' '.
+        lv_log_text = |{ lv_log_text } |.
+      ENDIF.
+
+      lv_log_text = |{ lv_log_text }{ ls_arg-this->* }|.
+    ENDLOOP.
+
+    IF lv_log_text <> ' '.
+      WRITE / lv_log_text.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD backend_eval_path.
+    DATA lr_parent TYPE REF TO ts_data.
+    DATA(lr_data) = NEW ts_data( ).
+
+    lr_data->* = is_data.
+
+    DATA(lt_parts) = ir_path->parts.
+    DATA(lv_lines) = lines( lt_parts ).
+
+    IF lv_lines = 0.
+      rs_result-error = 'Path contains no parts'.
+      RETURN.
+    ENDIF.
+
+    DATA(lv_relative_path_found) = abap_false.
+    DATA(lv_index) = 1.
+
+    " Go back the amount of relative steps.
+    WHILE lv_index < lines( lt_parts ).
+      IF lt_parts[ lv_index ] = c_relative.
+        TRY.
+            lr_parent ?= lr_data->parent.
+          CATCH cx_root.
+            rs_result-error = 'Parent is not a ts_data struct'.
+            RETURN.
+        ENDTRY.
+
+        DELETE lt_parts INDEX 1.
+
+        IF lr_parent IS NOT BOUND.
+          rs_result-error = 'No parent found'.
+          RETURN.
+        ENDIF.
+
+        lr_data = lr_parent.
+
+        IF sy-subrc <> 0.
+          rs_result-error = 'Parent has the wrong type'.
+          RETURN.
+        ENDIF.
+
+        lv_relative_path_found = abap_true.
+      ELSE.
+        lv_index = lv_index + 1.
+      ENDIF.
+    ENDWHILE.
+
+    lv_index = 1.
+
+    DATA: lt_path_parts TYPE string_table,
+          lv_kind       TYPE e_backend_data_kinds.
+
+
+    DATA(lv_property_found) = abap_false.
+
+    WHILE lv_index <= lv_lines.
+      DATA(lv_part) = lt_parts[ lv_index ].
+      DATA(lv_skip) = abap_false.
+
+      " Only evaluate "this" or block-parameter for first index.
+      IF lv_index = 1.
+
+        " Check for "this"-keyword.
+        IF lv_part = c_this.
+          lv_skip = abap_true.
+
+          " If no relative path was found, check for block parameter.
+        ELSEIF lv_relative_path_found = abap_false.
+          DATA(lv_block_index) = lines( me->mt_backend_block_stack ).
+
+          DO.
+            DATA(lr_block) = backend_get_block( lv_block_index ).
+
+            IF lr_block IS NOT BOUND.
+              EXIT.
+            ENDIF.
+
+            DATA(ls_data) = VALUE #( lr_block->params[ name = lv_part ] OPTIONAL ).
+
+            IF ls_data IS NOT INITIAL.
+              GET REFERENCE OF ls_data-data INTO lr_data.
+              lv_skip = abap_true.
+              EXIT.
+            ENDIF.
+
+            lv_block_index = lv_block_index - 1.
+          ENDDO.
+        ENDIF.
+      ENDIF.
+
+      DATA lv_error TYPE string.
+
+      " Use a do-loop to be able to go upwards in the structure tree to look for a property.
+      DO.
+        " If lr_data is not bound, it means that there's no structure to look up for the property at.
+        IF lr_data IS NOT BOUND.
+
+          " If it's the first iteration and no property has been found, it's possible
+          " that the path refers to an inline-helper.
+          IF lv_index = 1.
+            DATA(ls_helper) = me->find_helper( lv_part ).
+
+            " If it's a helper, invoke it and use the result.
+            IF ls_helper IS NOT INITIAL.
+              DATA(rs_helper_result) = me->backend_call_helper(
+                iv_name = lv_part
+                is_data = is_data
+              ).
+              lv_error = rs_helper_result-error.
+
+              IF lv_error IS NOT INITIAL.
+                rs_result-error = lv_error.
+                RETURN.
+              ENDIF.
+
+              lr_data = NEW ts_data(
+                this = NEW ts_parser_string_literal( value = rs_helper_result-text token = ir_path->token )
+              ).
+            ENDIF.
+          ENDIF.
+
+          rs_result-error = |Field { lv_part } doesn't exist|.
+          RETURN.
+        ENDIF.
+
+        " Skip if the first path part was either "this" or a block-parameter name.
+        IF lv_skip = abap_false.
+          DATA(lr_this) = lr_data->this.
+          lv_kind = me->backend_get_data_kind( lr_this ).
+
+          " Check if there's something to check the property on.
+          IF lv_kind = e_backend_data_kind_undefined.
+
+            " If it's not the last part of the evaluation, exit with error. Otherwise, the property is just undefined.
+            IF lv_index < lv_lines.
+              rs_result-error = |{ lv_part } cannot be evaluated on undefined|.
+              RETURN.
+            ELSE.
+              EXIT.
+            ENDIF.
+          ELSE.
+
+            " Check if data is a structure.
+            IF lv_kind = e_backend_data_kind_struct.
+              ASSIGN COMPONENT lv_part OF STRUCTURE lr_this->* TO FIELD-SYMBOL(<field>).
+
+              " Check if requested path exists.
+              IF sy-subrc = 0.
+                lv_property_found = abap_true.
+
+                GET REFERENCE OF <field> INTO lr_this.
+                APPEND lv_part TO lt_path_parts.
+
+                lr_parent = NEW ts_data( ). " Make sure parent is on the heap.
+                lr_parent->* = lr_data->*.
+
+                lr_data = NEW ts_data(
+                  this   = lr_this
+                  parent = lr_parent
+                ).
+                EXIT.
+              ENDIF.
+            ENDIF.
+
+            " If no property has been found yet, go further up.
+            IF lv_property_found = abap_false AND lr_data->parent IS BOUND.
+              TRY.
+                  lr_data ?= lr_data->parent.
+                CATCH cx_root.
+                  rs_result-error = 'Parent is not a ts_data struct'.
+                  RETURN.
+              ENDTRY.
+            ELSE.
+              FREE lr_data.
+            ENDIF.
+          ENDIF.
+        ELSE.
+          EXIT.
+        ENDIF.
+      ENDDO.
+
+      lv_index = lv_index + 1.
+    ENDWHILE.
+
+    " If the last found property was undefined, create an undefined ts_data.
+    IF lv_kind = e_backend_data_kind_undefined.
+      lr_data = NEW ts_data(
+        this   = NEW ts_parser_undefined_literal( )
+        parent = lr_parent
+      ).
+    ENDIF.
+
+    rs_result-data = lr_data->*.
+    rs_result-kind = me->backend_get_data_kind( lr_data->this ).
+  ENDMETHOD.
+
+
+  METHOD backend_get_data_type.
+    DATA(ls_descriptor) = cl_abap_typedescr=>describe_by_data_ref( ir_data ).
+    rv_type = ls_descriptor->get_relative_name( ).
+
+    TRANSLATE rv_type TO LOWER CASE.
+  ENDMETHOD.
+
+
+  METHOD backend_get_data_kind.
+    rv_kind = e_backend_data_kind_undefined.
+
+    IF ir_data IS BOUND.
+      DATA(ls_descriptor) = cl_abap_typedescr=>describe_by_data_ref( ir_data ).
+
+      CASE ls_descriptor->kind.
+        WHEN ls_descriptor->kind_elem.
+          rv_kind = e_backend_data_kind_simple.
+
+        WHEN ls_descriptor->kind_struct.
+          rv_kind = e_backend_data_kind_struct.
+
+        WHEN ls_descriptor->kind_table.
+          rv_kind = e_backend_data_kind_table.
+
+        WHEN OTHERS.
+          rv_kind = e_backend_data_kind_unknown.
+      ENDCASE.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD backend_get_block.
+    READ TABLE me->mt_backend_block_stack REFERENCE INTO rr_block INDEX iv_index.
+
+    IF sy-subrc <> 0.
+      FREE rr_block.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD backend_get_last_block.
+    rr_block = me->backend_get_block( lines( mt_backend_block_stack ) ).
+  ENDMETHOD.
+
+
+  METHOD backend_is_truthy.
+    DATA(lv_kind) = me->backend_get_data_kind( ir_data ).
+    DATA(lv_truthy) = abap_false.
+
+    CASE lv_kind.
+      WHEN e_backend_data_kind_simple.
+        lv_truthy = xsdbool( ir_data->* <> ' ' ).
+
+      WHEN e_backend_data_kind_struct.
+        DATA(lo_struct_desc) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data_ref( ir_data ) ).
+        DATA(lt_components) = lo_struct_desc->get_components( ).
+
+        lv_truthy = xsdbool( lines( lt_components ) > 0 ).
+
+      WHEN e_backend_data_kind_table.
+        FIELD-SYMBOLS: <table> TYPE ANY TABLE.
+
+        ASSIGN ir_data->* TO <table>.
+        lv_truthy = xsdbool( lines( <table> ) > 0 ).
+
+      WHEN OTHERS.
+        rs_result-error = |Unknown data kind { lv_kind }|.
+
+    ENDCASE.
+
+    rs_result-truthy = lv_truthy.
+  ENDMETHOD.
+
+
+  METHOD backend_call_helper.
+    DATA(ls_find_helper_result) = me->find_helper( iv_name ).
+    DATA(lv_error) = ls_find_helper_result-error.
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    DATA(lr_registered_helper) = ls_find_helper_result-helper.
+    DATA(lo_helper_object) = lr_registered_helper->object.
+
+    TRY.
+        " Get method name and make sure it's all caps (otherwise an exception gets thrown on call).
+        DATA(lv_method) = lr_registered_helper->method.
+        TRANSLATE lv_method TO UPPER CASE.
+
+        IF lo_helper_object IS BOUND.
+          CALL METHOD lo_helper_object->(lv_method)
+            EXPORTING
+              iv_name   = iv_name
+              it_args   = it_args
+              is_data   = is_data
+            RECEIVING
+              rs_result = rs_result.
+        ELSE.
+          CALL METHOD (lv_method)
+            EXPORTING
+              iv_name   = iv_name
+              it_args   = it_args
+              is_data   = is_data
+            RECEIVING
+              rs_result = rs_result.
+        ENDIF.
+      CATCH cx_root INTO DATA(lx_error).
+        rs_result-error = lx_error->get_longtext( ).
+    ENDTRY.
+  ENDMETHOD.
+ENDCLASS.
