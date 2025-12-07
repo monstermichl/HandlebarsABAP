@@ -46,7 +46,7 @@ CLASS zcl_handlebars_abap DEFINITION
 
     METHODS template
       IMPORTING
-        ir_data          TYPE REF TO data OPTIONAL
+        ia_data          TYPE any OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_template_result.
 
@@ -61,6 +61,13 @@ CLASS zcl_handlebars_abap DEFINITION
         it_data          TYPE tt_data OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
+
+    METHODS error
+      IMPORTING
+        iv_error        TYPE string
+        iv_param_index  TYPE i OPTIONAL
+      RETURNING
+        VALUE(rv_error) TYPE string.
 
   PROTECTED SECTION.
 
@@ -84,8 +91,10 @@ CLASS zcl_handlebars_abap DEFINITION
     TYPES: BEGIN OF ENUM e_tokenizer_token_types,
              e_token_type_unknown,
              e_token_type_text,
-             e_token_type_start,
-             e_token_type_end,
+             e_token_type_hashtag,
+             e_token_type_slash,
+             e_token_type_o_round_bracket,
+             e_token_type_c_round_bracket,
              e_token_type_pipe,
              e_token_type_at,
              e_token_type_else,
@@ -102,6 +111,15 @@ CLASS zcl_handlebars_abap DEFINITION
            END OF ENUM e_tokenizer_token_types.
 
     TYPES: tt_tokenizer_token_types TYPE STANDARD TABLE OF e_tokenizer_token_types WITH DEFAULT KEY.
+
+    TYPES: BEGIN OF ts_tokenizer_placeholder,
+             offset     TYPE i,
+             length     TYPE i,
+             content    TYPE string,
+             is_comment TYPE abap_bool,
+           END OF ts_tokenizer_placeholder.
+
+    TYPES: tt_tokenizer_placeholders TYPE STANDARD TABLE OF ts_tokenizer_placeholder WITH DEFAULT KEY.
 
     TYPES: BEGIN OF ts_tokenizer_token,
              position TYPE i,
@@ -129,6 +147,11 @@ CLASS zcl_handlebars_abap DEFINITION
       RETURNING
         VALUE(rv_error)    TYPE string.
 
+    METHODS tokenizer_eval_placeholders
+      IMPORTING iv_template_string     TYPE string
+      RETURNING
+                VALUE(rt_placeholders) TYPE tt_tokenizer_placeholders.
+
     METHODS tokenizer_add_token
       IMPORTING
         VALUE(iv_value)    TYPE string
@@ -144,64 +167,76 @@ CLASS zcl_handlebars_abap DEFINITION
 
     TYPES: tt_parser_expressions TYPE STANDARD TABLE OF tr_parser_expression WITH DEFAULT KEY.
 
-    TYPES: BEGIN OF ts_parser_statement_base,
+    TYPES: BEGIN OF ts_parser_stmt_base,
              token TYPE ts_tokenizer_token,
-           END OF ts_parser_statement_base.
+           END OF ts_parser_stmt_base.
 
     TYPES: BEGIN OF ts_parser_text,
              value TYPE string.
-             INCLUDE TYPE ts_parser_statement_base.
+             INCLUDE TYPE ts_parser_stmt_base.
     TYPES: END OF ts_parser_text.
 
     TYPES: BEGIN OF ts_parser_bool_literal,
              value TYPE abap_bool.
-             INCLUDE TYPE ts_parser_statement_base.
+             INCLUDE TYPE ts_parser_stmt_base.
     TYPES: END OF ts_parser_bool_literal.
 
     TYPES: BEGIN OF ts_parser_float_literal,
              value TYPE float.
-             INCLUDE TYPE ts_parser_statement_base.
+             INCLUDE TYPE ts_parser_stmt_base.
     TYPES: END OF ts_parser_float_literal.
 
     TYPES: BEGIN OF ts_parser_string_literal,
-             value TYPE float.
-             INCLUDE TYPE ts_parser_statement_base.
+             value TYPE string.
+             INCLUDE TYPE ts_parser_stmt_base.
     TYPES: END OF ts_parser_string_literal.
 
     TYPES: BEGIN OF ts_parser_null_literal.
-             INCLUDE TYPE ts_parser_statement_base.
+             INCLUDE TYPE ts_parser_stmt_base.
     TYPES: END OF ts_parser_null_literal.
 
     TYPES: BEGIN OF ts_parser_undefined_literal.
-             INCLUDE TYPE ts_parser_statement_base.
+             INCLUDE TYPE ts_parser_stmt_base.
     TYPES: END OF ts_parser_undefined_literal.
 
     TYPES: BEGIN OF ts_parser_path,
              parts         TYPE string_table,
              is_identifier TYPE abap_bool.
-             INCLUDE TYPE ts_parser_statement_base.
+             INCLUDE TYPE ts_parser_stmt_base.
     TYPES: END OF ts_parser_path.
+
+    TYPES: BEGIN OF ts_parser_sub_expr,
+             expr TYPE tr_parser_expression.
+             INCLUDE TYPE ts_parser_stmt_base.
+    TYPES: END OF ts_parser_sub_expr.
 
     TYPES: BEGIN OF ts_parser_body,
              statements TYPE tt_parser_statements.
-             INCLUDE    TYPE ts_parser_statement_base.
+             INCLUDE    TYPE ts_parser_stmt_base.
     TYPES: END OF ts_parser_body.
 
     TYPES: BEGIN OF ts_parser_template,
              body TYPE ts_parser_body.
-             INCLUDE TYPE ts_parser_statement_base.
+             INCLUDE TYPE ts_parser_stmt_base.
     TYPES: END OF ts_parser_template.
 
     TYPES: BEGIN OF ts_parser_helper,
              name TYPE string,
              args TYPE tt_parser_expressions.
-             INCLUDE TYPE ts_parser_statement_base.
+             INCLUDE TYPE ts_parser_stmt_base.
     TYPES: END OF ts_parser_helper.
+
+    TYPES: BEGIN OF ts_parser_block_param,
+             name TYPE string.
+             INCLUDE    TYPE ts_parser_stmt_base.
+    TYPES: END OF ts_parser_block_param.
+
+    TYPES: tt_parser_block_params TYPE STANDARD TABLE OF ts_parser_block_param WITH DEFAULT KEY.
 
     TYPES: BEGIN OF ts_parser_block,
              body   TYPE ts_parser_body,
              else   TYPE ts_parser_body,
-             params TYPE string_table.
+             params TYPE tt_parser_block_params.
              INCLUDE TYPE ts_parser_helper.
     TYPES:END OF ts_parser_block.
 
@@ -283,10 +318,18 @@ CLASS zcl_handlebars_abap DEFINITION
         VALUE(rs_result) TYPE ts_parser_eval_result.
 
     METHODS parser_eval_inline_helper
+      IMPORTING
+        it_termination_token_types TYPE tt_tokenizer_token_types OPTIONAL
       RETURNING
-        VALUE(rs_result) TYPE ts_parser_eval_result.
+        VALUE(rs_result)           TYPE ts_parser_eval_result.
 
     METHODS parser_eval_expr
+      IMPORTING
+        it_termination_token_types TYPE tt_tokenizer_token_types OPTIONAL
+      RETURNING
+        VALUE(rs_result)           TYPE ts_parser_eval_result.
+
+    METHODS parser_eval_sub_expr
       RETURNING
         VALUE(rs_result) TYPE ts_parser_eval_result.
 
@@ -343,27 +386,34 @@ CLASS zcl_handlebars_abap DEFINITION
              error  TYPE string,
            END OF ts_backend_is_truthy_result.
 
-    TYPES: BEGIN OF ts_backend_block_parameter,
-             name TYPE string,
-             data TYPE ts_data,
-           END OF ts_backend_block_parameter.
+    TYPES: BEGIN OF ts_backend_block_arg,
+             param TYPE ts_parser_block_param,
+             data  TYPE ts_data,
+           END OF ts_backend_block_arg.
 
-    TYPES: tt_backend_block_parameters TYPE STANDARD TABLE OF ts_backend_block_parameter WITH DEFAULT KEY.
+    TYPES: tt_backend_block_args TYPE STANDARD TABLE OF ts_backend_block_arg WITH DEFAULT KEY.
 
     TYPES: BEGIN OF ts_backend_block_stack_block,
-             block  TYPE REF TO ts_parser_block,
-             params TYPE tt_backend_block_parameters,
+             block TYPE REF TO ts_parser_block,
+             args  TYPE tt_backend_block_args,
            END OF ts_backend_block_stack_block.
 
     TYPES: tt_backend_block_stack TYPE TABLE OF ts_backend_block_stack_block.
 
-    DATA: mt_backend_block_stack      TYPE tt_backend_block_stack,
-          mv_backend_is_inline_helper TYPE abap_bool.
+    DATA: mt_backend_block_stack   TYPE tt_backend_block_stack,
+          mv_backend_inline_helper TYPE ts_parser_inline_helper.
 
     METHODS backend_build_error
       IMPORTING
         iv_error        TYPE string
         is_token        TYPE ts_tokenizer_token
+      RETURNING
+        VALUE(rv_error) TYPE string.
+
+    METHODS backend_n_args_helper_error
+      IMPORTING
+        iv_expected     TYPE i
+        iv_actual       TYPE i
       RETURNING
         VALUE(rv_error) TYPE string.
 
@@ -384,7 +434,14 @@ CLASS zcl_handlebars_abap DEFINITION
     METHODS backend_eval_expr
       IMPORTING
         ir_stmt          TYPE REF TO data
-        is_data          TYPE ts_data
+        is_data          TYPE ts_data OPTIONAL
+      RETURNING
+        VALUE(rs_result) TYPE ts_backend_eval_expr_result.
+
+    METHODS backend_eval_literal_expr
+      IMPORTING
+        ir_stmt          TYPE REF TO data
+        is_data          TYPE ts_data OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_backend_eval_expr_result.
 
@@ -448,6 +505,13 @@ CLASS zcl_handlebars_abap DEFINITION
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
+    METHODS backend_eval_sub_expr
+      IMPORTING
+        ir_sub_expr      TYPE REF TO ts_parser_sub_expr
+        is_data          TYPE ts_data
+      RETURNING
+        VALUE(rs_result) TYPE ts_backend_path_eval_result.
+
     METHODS backend_eval_path
       IMPORTING
         ir_path          TYPE REF TO ts_parser_path
@@ -490,6 +554,12 @@ CLASS zcl_handlebars_abap DEFINITION
         is_data          TYPE ts_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
+
+    METHODS backend_get_token_property
+      IMPORTING
+        ir_struct       TYPE REF TO data
+      RETURNING
+        VALUE(rs_token) TYPE ts_tokenizer_token.
 
 ENDCLASS.
 
@@ -539,10 +609,20 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD template.
+    DATA lr_data TYPE REF TO data.
+    DATA(lo_descr) = cl_abap_typedescr=>describe_by_data( ia_data ).
+
+    " If passed data is not a reference, get its reference.
+    IF lo_descr->kind <> lo_descr->kind_ref.
+      GET REFERENCE OF ia_data INTO lr_data.
+    ELSE.
+      lr_data = ia_data.
+    ENDIF.
+
     DATA(ls_result) = me->backend_eval_stmt(
       ir_stmt = me->mr_template
       is_data = VALUE ts_data(
-        this = ir_data
+        this = lr_data
       )
     ).
     DATA(lv_error) = ls_result-error.
@@ -563,6 +643,38 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
   METHOD inverse.
     rs_result = me->backend_eval_block_body( iv_property = 'else' it_data = it_data ).
+  ENDMETHOD.
+
+
+  METHOD error.
+    DATA ls_helper TYPE ts_parser_helper.
+
+    IF me->mv_backend_inline_helper IS NOT INITIAL.
+      MOVE-CORRESPONDING me->mv_backend_inline_helper TO ls_helper.
+    ELSE.
+      DATA(lr_block) = me->backend_get_last_block( ).
+
+      IF lr_block IS BOUND.
+        MOVE-CORRESPONDING lr_block->block->* TO ls_helper.
+      ENDIF.
+    ENDIF.
+
+    " If a helper has been found, values can be evaluated.
+    IF ls_helper IS NOT INITIAL.
+      DATA(lt_args) = ls_helper-args.
+      DATA(ls_token) = ls_helper-token.
+
+      " If param index is in a valid range, try to get token property.
+      IF iv_param_index > 0 AND iv_param_index < lines( lt_args ).
+        DATA(ls_arg) = lt_args[ iv_param_index ].
+        GET REFERENCE OF ls_arg INTO DATA(lr_arg).
+
+        ls_token = me->backend_get_token_property( ir_struct = lr_arg ).
+      ENDIF.
+
+      " Augment passed error with token position.
+      rv_error = me->backend_build_error( iv_error = iv_error is_token = ls_token ).
+    ENDIF.
   ENDMETHOD.
 
 
@@ -591,28 +703,32 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
              type  TYPE e_tokenizer_token_types,
            END OF ts_match_mapping.
 
-    CONSTANTS: c_space          TYPE string VALUE '\s+',
-               c_start          TYPE string VALUE '\#',
-               c_end            TYPE string VALUE '\/',
-               c_pipe           TYPE string VALUE '\|',
-               c_at             TYPE string VALUE '\@',
-               c_as             TYPE string VALUE 'as',
-               c_null           TYPE string VALUE 'null',
-               c_undefined      TYPE string VALUE 'undefined',
-               c_number_pattern TYPE string VALUE '(-|\+)?\d+(.\d+)?',
-               c_path_pattern_1 TYPE string VALUE '(\.\.\/)*\w+(\.\w+)*',
-               c_path_pattern_2 TYPE string VALUE '(\.\.\/)',
-               c_path_pattern_3 TYPE string VALUE '\.'.
+    CONSTANTS: c_space           TYPE string VALUE '\s+',
+               c_hashtag         TYPE string VALUE '\#',
+               c_slash           TYPE string VALUE '\/',
+               c_o_round_bracket TYPE string VALUE '\(',
+               c_c_round_bracket TYPE string VALUE '\)',
+               c_pipe            TYPE string VALUE '\|',
+               c_at              TYPE string VALUE '\@',
+               c_as              TYPE string VALUE 'as',
+               c_null            TYPE string VALUE 'null',
+               c_undefined       TYPE string VALUE 'undefined',
+               c_number_pattern  TYPE string VALUE '(-|\+)?\d+(.\d+)?',
+               c_path_pattern_1  TYPE string VALUE '(\.\.\/)*\w+(\.\w+)*',
+               c_path_pattern_2  TYPE string VALUE '(\.\.\/)',
+               c_path_pattern_3  TYPE string VALUE '\.'.
 
     DATA: lv_previous_offset TYPE i VALUE 0,
           lv_text            TYPE string.
 
     DATA(lt_char_mappings) = VALUE tt_token_mappings(
-      ( pattern = c_space type = e_token_type_space )
-      ( pattern = c_start type = e_token_type_start )
-      ( pattern = c_end   type = e_token_type_end   )
-      ( pattern = c_at    type = e_token_type_at    )
-      ( pattern = c_pipe  type = e_token_type_pipe  )
+      ( pattern = c_space           type = e_token_type_space           )
+      ( pattern = c_hashtag         type = e_token_type_hashtag         )
+      ( pattern = c_o_round_bracket type = e_token_type_o_round_bracket )
+      ( pattern = c_c_round_bracket type = e_token_type_c_round_bracket )
+      ( pattern = c_slash           type = e_token_type_slash           )
+      ( pattern = c_at              type = e_token_type_at              )
+      ( pattern = c_pipe            type = e_token_type_pipe            )
     ).
 
     DATA(lt_keyword_mappings) = VALUE tt_token_mappings(
@@ -629,13 +745,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ).
 
     DATA(lv_text_length) = 0.
+    DATA(lt_placeholders) = me->tokenizer_eval_placeholders( iv_template_string ).
 
-    " Get all placeholders.
-    FIND ALL OCCURRENCES OF PCRE '\{\{(.*?)\}\}' IN iv_template_string RESULTS DATA(lt_matches).
-
-    LOOP AT lt_matches INTO DATA(ls_placeholder_match).
-      DATA(lv_placeholder_offset) = ls_placeholder_match-offset.
-      DATA(lv_placeholder_length) = ls_placeholder_match-length.
+    LOOP AT lt_placeholders INTO DATA(ls_placeholder).
+      DATA(lv_placeholder_offset) = ls_placeholder-offset.
+      DATA(lv_placeholder_length) = ls_placeholder-length.
 
       lv_text_length = lv_placeholder_offset - lv_previous_offset.
       lv_text = iv_template_string+lv_previous_offset(lv_text_length).
@@ -647,9 +761,12 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       " Update previous offset.
       lv_previous_offset = lv_placeholder_offset + lv_placeholder_length.
 
-      " Get submatch (actual placeholder content).
-      DATA(ls_submatch) = ls_placeholder_match-submatches[ 1 ].
-      DATA(lv_content) = iv_template_string+ls_submatch-offset(ls_submatch-length).
+      " If placeholder is comment, skip it.
+      IF ls_placeholder-is_comment <> abap_false.
+        CONTINUE.
+      ENDIF.
+
+      DATA(lv_content) = ls_placeholder-content.
       DATA(lv_i) = 0.
       DATA(lv_collecting_string) = abap_false.
 
@@ -680,7 +797,9 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           ENDIF.
         ENDIF.
 
-        DATA(lv_token_position) = lv_placeholder_offset + lv_i + 1.
+        " +1 because lv_i starts at 0.
+        " +2 because placeholder starts with "{{".
+        DATA(lv_token_position) = lv_placeholder_offset + lv_i + 1 + 2.
 
         " If collecting string has changed, handle string.
         IF lv_collecting_string_before <> lv_collecting_string.
@@ -756,7 +875,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         ENDIF.
       ENDDO.
 
-      me->tokenizer_add_token( iv_value = '' iv_position = lv_i iv_type = e_token_type_eop ).
+      " Add EOP (end-of-placeholder) token at the end of a placeholder.
+      me->tokenizer_add_token( iv_value = '' iv_position = lv_token_position iv_type = e_token_type_eop ).
     ENDLOOP.
 
     lv_text = iv_template_string+lv_previous_offset.
@@ -768,6 +888,79 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     " Terminate with EOF-token.
     me->tokenizer_add_token( iv_value = '' iv_position = -1 iv_type = e_token_type_eof ).
+  ENDMETHOD.
+
+
+  METHOD tokenizer_eval_placeholders.
+    TYPES: BEGIN OF ENUM e_comment_types,
+             e_comment_type_none,
+             e_comment_type_simple,
+             e_comment_type_complex,
+           END OF ENUM e_comment_types.
+
+    CONSTANTS: c_opening_brackets TYPE string VALUE '{{',
+               c_closing_brackets TYPE string VALUE '}}',
+               c_minus_minus      TYPE string VALUE '--'.
+
+    DATA: lv_previous_c   TYPE c,
+          lv_comment_type TYPE e_comment_types,
+          lv_four_chars   TYPE string.
+
+    DATA(lv_i) = 0.
+    DATA(lv_template_length) = strlen( iv_template_string ).
+    DATA(lv_start_index) = 0.
+
+    WHILE lv_i < lv_template_length.
+      DATA(lv_c) = iv_template_string+lv_i(1).
+      DATA(lv_current_two_chars) = |{ lv_previous_c }{ lv_c }|.
+
+      " Check if placeholder start has not been found yet.
+      IF lv_start_index = 0.
+        IF lv_current_two_chars = c_opening_brackets.
+          lv_start_index = lv_i + 1.
+        ENDIF.
+
+        " If placeholder starts with an exclamation mark it's a comment.
+      ELSEIF lv_start_index = lv_i AND lv_c = '!'.
+        lv_comment_type = e_comment_type_simple.
+      ELSEIF lv_comment_type = e_comment_type_simple AND lv_four_chars = |{ c_opening_brackets }!-| AND lv_current_two_chars = c_minus_minus.
+        lv_comment_type = e_comment_type_complex.
+      ENDIF.
+
+      lv_four_chars = |{ lv_four_chars }{ lv_c }|.
+
+      " Make sure, lv_four_chars contains a maximum of 4 chars.
+      IF strlen( lv_four_chars ) > 4.
+        SHIFT lv_four_chars.
+      ENDIF.
+
+      lv_i = lv_i + 1.
+
+      " Check end of placeholder.
+      IF (
+        ( lv_comment_type =  e_comment_type_complex AND lv_four_chars = |{ c_minus_minus }{ c_closing_brackets }| ) OR
+        ( lv_comment_type <> e_comment_type_complex AND lv_current_two_chars = c_closing_brackets )
+      ).
+        DATA(lv_end_index) = lv_i - strlen( c_closing_brackets ). " -2 because of the }}.
+        DATA(lv_length) = lv_end_index - lv_start_index.
+        DATA(lv_offset) = lv_start_index - strlen( c_opening_brackets ).
+
+        APPEND VALUE #(
+          offset     = lv_offset
+          length     = lv_i - lv_offset
+          content    = iv_template_string+lv_start_index(lv_length)
+          is_comment = xsdbool( lv_comment_type <> e_comment_type_none )
+        ) TO rt_placeholders.
+
+        " Reset values.
+        lv_start_index = 0.
+        lv_four_chars = ''.
+        lv_previous_c = ''.
+        lv_comment_type = e_comment_type_none.
+      ELSE.
+        lv_previous_c = lv_c.
+      ENDIF.
+    ENDWHILE.
   ENDMETHOD.
 
 
@@ -837,7 +1030,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DATA(lv_expect_eop) = abap_true.
 
     CASE ls_token-type.
-      WHEN e_token_type_start.
+      WHEN e_token_type_hashtag.
         CASE ls_next_token-type.
           WHEN e_token_type_path.
             ls_result = me->parser_eval_block( ).
@@ -852,12 +1045,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         lv_expect_eop = abap_false.
 
       WHEN OTHERS.
-        " If the next token is not EOP, it's an inline-helper.
-        IF ls_next_token-type <> e_token_type_eop.
-          ls_result = me->parser_eval_inline_helper( ).
-        ELSE.
-          ls_result = me->parser_eval_expr( ).
-        ENDIF.
+        ls_result = me->parser_eval_expr( ).
     ENDCASE.
 
     DATA(lv_error) = rs_result-error.
@@ -938,7 +1126,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DATA(ls_token) = me->parser_eat( ).
     DATA(ls_start_token) = ls_token.
 
-    IF ls_token-type <> e_token_type_start.
+    IF ls_token-type <> e_token_type_hashtag.
       rs_result-error = me->parser_build_expected_error( iv_error = '#' is_token = ls_token ).
       RETURN.
     ENDIF.
@@ -977,7 +1165,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         RETURN.
       ENDIF.
 
-      DATA lt_params TYPE string_table.
+      DATA lt_params TYPE tt_parser_block_params.
 
       DO.
         ls_token = me->parser_peek( ).
@@ -1003,7 +1191,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           RETURN.
         ENDIF.
 
-        APPEND lr_path->parts[ 1 ] TO lt_params.
+        APPEND VALUE #( name = lr_path->parts[ 1 ] token = ls_token ) TO lt_params.
       ENDDO.
 
       ls_token = me->parser_eat( ).
@@ -1026,7 +1214,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ls_token = me->parser_peek( ).
 
     DATA(ls_stmts_result) = me->parser_eval_stmts(
-      it_termination_token_types = VALUE #( ( e_token_type_else ) ( e_token_type_end ) ) " Terminate on else and /.
+      it_termination_token_types = VALUE #( ( e_token_type_else ) ( e_token_type_slash ) ) " Terminate on else and /.
     ).
     lv_error = ls_stmts_result-error.
 
@@ -1059,7 +1247,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ENDIF.
 
       ls_stmts_result = me->parser_eval_stmts(
-        it_termination_token_types = VALUE #( ( e_token_type_end ) ) " Terminate on /.
+        it_termination_token_types = VALUE #( ( e_token_type_slash ) ) " Terminate on /.
       ).
       lv_error = ls_stmts_result-error.
 
@@ -1073,7 +1261,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     ls_token = me->parser_eat( ).
 
-    IF ls_token-type <> e_token_type_end.
+    IF ls_token-type <> e_token_type_slash.
       rs_result-error = me->parser_build_expected_error( iv_error = '/' is_token = ls_token ).
       RETURN.
     ENDIF.
@@ -1101,7 +1289,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(ls_eval_args_result) = me->parser_eval_args( ).
+    DATA(ls_eval_args_result) = me->parser_eval_args( it_termination_token_types ).
     lv_error = ls_eval_args_result-error.
 
     IF lv_error IS NOT INITIAL.
@@ -1121,10 +1309,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DATA lr_data TYPE REF TO data.
 
     DATA(ls_token) = me->parser_peek( ).
+    DATA(lv_token_type) = ls_token-type.
     DATA(lv_value) = ls_token-value.
     DATA(lv_eat) = abap_true.
 
-    CASE ls_token-type.
+    CASE lv_token_type.
       WHEN e_token_type_bool_literal.
         lr_data = NEW ts_parser_bool_literal( value = xsdbool( lv_value <> c_false ) token = ls_token ).
 
@@ -1134,8 +1323,31 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       WHEN e_token_type_string_literal.
         lr_data = NEW ts_parser_string_literal( value = lv_value token = ls_token ).
 
-      WHEN e_token_type_path.
-        DATA(ls_result) = me->parser_eval_path( ).
+      WHEN e_token_type_path OR e_token_type_o_round_bracket.
+        DATA ls_result TYPE ts_parser_eval_result.
+
+        CASE lv_token_type.
+          WHEN e_token_type_o_round_bracket.
+            ls_result = me->parser_eval_sub_expr( ).
+
+          WHEN OTHERS.
+            DATA(lt_term_token_types) = it_termination_token_types.
+
+            " Make sure EOP is part of termination token list.
+            APPEND e_token_type_eop TO lt_term_token_types.
+
+            DATA(ls_next_token) = me->parser_peek_at( 1 ).
+            DATA(lv_next_token_type) = ls_next_token-type.
+            DATA(lv_is_term_token) = VALUE #( lt_term_token_types[ table_line = lv_next_token_type ] OPTIONAL ).
+
+            " If the next token is not in termination token list, it's an inline-helper.
+            IF ls_next_token-type <> lv_is_term_token.
+              ls_result = me->parser_eval_inline_helper( lt_term_token_types ).
+            ELSE.
+              ls_result = me->parser_eval_path( ).
+            ENDIF.
+        ENDCASE.
+
         DATA(lv_error) = ls_result-error.
 
         IF lv_error IS NOT INITIAL.
@@ -1161,6 +1373,37 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     rs_result-stmt = lr_data.
+  ENDMETHOD.
+
+
+  METHOD parser_eval_sub_expr.
+    DATA(ls_token) = me->parser_eat( ).
+    DATA(ls_bracket_token) = ls_token.
+
+    IF ls_token-type <> e_token_type_o_round_bracket.
+      rs_result-error = me->parser_build_expected_error( iv_error = '(' is_token = ls_token ).
+      RETURN.
+    ENDIF.
+
+    DATA(ls_result) = parser_eval_expr( VALUE #( ( e_token_type_c_round_bracket ) ) ).
+    DATA(lv_error) = ls_result-error.
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    ls_token = me->parser_eat( ).
+
+    IF ls_token-type <> e_token_type_c_round_bracket.
+      rs_result-error = me->parser_build_expected_error( iv_error = ')' is_token = ls_token ).
+      RETURN.
+    ENDIF.
+
+    rs_result-stmt = NEW ts_parser_sub_expr(
+      expr  = ls_result-stmt
+      token = ls_bracket_token
+    ).
   ENDMETHOD.
 
 
@@ -1246,7 +1489,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         EXIT.
       ENDIF.
 
-      DATA(ls_expr_result) = me->parser_eval_expr( ).
+      DATA(ls_expr_result) = me->parser_eval_expr( lt_termination_token_types ).
       DATA(lv_error) = ls_expr_result-error.
 
       IF lv_error IS NOT INITIAL.
@@ -1278,6 +1521,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
   METHOD backend_build_error.
     rv_error = me->parser_build_error( iv_error = iv_error is_token = is_token ).
+  ENDMETHOD.
+
+
+  METHOD backend_n_args_helper_error.
+    rv_error = me->error( |Expected exactly { iv_expected } argument but got { iv_actual }| ).
   ENDMETHOD.
 
 
@@ -1331,15 +1579,6 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           is_data  = is_data
         ).
 
-      WHEN 'ts_parser_inline_helper'.
-        DATA lr_inline_helper TYPE REF TO ts_parser_inline_helper.
-        lr_inline_helper ?= ir_stmt.
-
-        rs_result = me->backend_eval_inline_helper(
-          ir_inline_helper = lr_inline_helper
-          is_data          = is_data
-        ).
-
       WHEN OTHERS.
         DATA(ls_eval_expr_result) = me->backend_eval_expr(
           ir_stmt = ir_stmt
@@ -1352,7 +1591,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           rs_result-error = lv_error.
           RETURN.
         ELSEIF lv_kind <> e_backend_data_kind_simple.
-          rs_result-error = |Cannot convert { lv_kind } to text|.
+          DATA(ls_token) = me->backend_get_token_property( ir_struct = ir_stmt ).
+          rs_result-error = me->backend_build_error( iv_error = |Cannot convert { lv_kind } to text| is_token = ls_token ).
           RETURN.
         ENDIF.
 
@@ -1362,11 +1602,94 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD backend_eval_expr.
+
+    " First, try to evaluate if it's a literal.
+    DATA(ls_literal_result) = me->backend_eval_literal_expr( ir_stmt = ir_stmt is_data = is_data ).
+
+    " If no error occurred, it's a literal which can be returned immediately.
+    IF ls_literal_result-error IS INITIAL.
+      rs_result = ls_literal_result.
+      RETURN.
+    ENDIF.
+
+    " If it's not a literal, try to evaluate a more complex type.
+    DATA: ls_data  TYPE ts_data,
+          lr_data  TYPE REF TO data,
+          lv_error TYPE string.
+
+    DATA(lv_type) = me->backend_get_data_type( ir_stmt ).
+
+    CASE lv_type.
+      WHEN 'ts_parser_sub_expr'.
+        DATA lr_sub_expr TYPE REF TO ts_parser_sub_expr.
+        lr_sub_expr ?= ir_stmt.
+
+        DATA(ls_sub_expr_result) = me->backend_eval_sub_expr(
+          ir_sub_expr = lr_sub_expr
+          is_data     = is_data
+        ).
+        lv_error = ls_sub_expr_result-error.
+
+        IF lv_error IS NOT INITIAL.
+          rs_result-error = lv_error.
+          RETURN.
+        ENDIF.
+
+        ls_data = ls_sub_expr_result-data.
+
+      WHEN 'ts_parser_inline_helper'.
+        DATA lr_inline_helper TYPE REF TO ts_parser_inline_helper.
+        lr_inline_helper ?= ir_stmt.
+
+        DATA(ls_inline_helper_result) = me->backend_eval_inline_helper(
+          ir_inline_helper = lr_inline_helper
+          is_data          = is_data
+        ).
+        lv_error = ls_inline_helper_result-error.
+
+        IF lv_error IS NOT INITIAL.
+          rs_result-error = lv_error.
+          RETURN.
+        ENDIF.
+
+        ls_data = VALUE ts_data(
+          this = NEW string( ls_inline_helper_result-text )
+        ).
+
+      WHEN 'ts_parser_path'.
+        DATA lr_path TYPE REF TO ts_parser_path.
+        lr_path ?= ir_stmt.
+
+        DATA(ls_path_result) = me->backend_eval_path(
+          ir_path = lr_path
+          is_data = is_data
+        ).
+        lv_error = ls_path_result-error.
+
+        IF lv_error IS NOT INITIAL.
+          rs_result-error = lv_error.
+          RETURN.
+        ENDIF.
+
+        ls_data = ls_path_result-data.
+
+      WHEN OTHERS.
+        DATA(ls_token) = me->backend_get_token_property( ir_stmt ).
+
+        rs_result-error = me->backend_build_error( iv_error = |Unknown expression type { lv_type }| is_token = ls_token ).
+        RETURN.
+    ENDCASE.
+
+    rs_result-data = ls_data.
+    rs_result-kind = me->backend_get_data_kind( ls_data-this ).
+  ENDMETHOD.
+
+
+  METHOD backend_eval_literal_expr.
     DATA: ls_data TYPE ts_data,
           lr_data TYPE REF TO data.
 
     DATA(lv_type) = me->backend_get_data_type( ir_stmt ).
-    DATA(lv_simple_type) = abap_true.
 
     CASE lv_type.
       WHEN 'ts_parser_bool_literal'.
@@ -1381,36 +1704,16 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       WHEN 'ts_parser_null_literal' OR 'ts_parser_undefined'.
         lr_data = ir_stmt.
 
-      WHEN 'ts_parser_path'.
-        DATA lr_path TYPE REF TO ts_parser_path.
-        lr_path ?= ir_stmt.
-
-        DATA(ls_result) = me->backend_eval_path(
-          ir_path = lr_path
-          is_data = is_data
-        ).
-        DATA(lv_error) = ls_result-error.
-
-        IF lv_error IS NOT INITIAL.
-          rs_result-error = lv_error.
-          RETURN.
-        ENDIF.
-
-        ls_data = ls_result-data.
-        lv_simple_type = abap_false.
-
       WHEN OTHERS.
-        rs_result-error = |Unknown expression type { lv_type }|.
+        DATA(ls_token) = me->backend_get_token_property( ir_stmt ).
+
+        rs_result-error = me->backend_build_error( iv_error = |Unknown literal type { lv_type }| is_token = ls_token ).
+        RETURN.
     ENDCASE.
 
-    " If simple type, create ts_data structure here.
-    IF lv_simple_type = abap_true.
-      ls_data = VALUE #(
-        this = lr_data
-      ).
-    ENDIF.
-
-    rs_result-data = ls_data.
+    rs_result-data = ls_data = VALUE #(
+      this = lr_data
+    ).
     rs_result-kind = me->backend_get_data_kind( ls_data-this ).
   ENDMETHOD.
 
@@ -1455,11 +1758,12 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     DATA(lv_is_block) = xsdbool( lr_block IS BOUND ).
 
-    " Push current block to stack for context information.
+    " Push current block to stack for context information...
     IF lv_is_block = abap_true.
       APPEND VALUE #( block = lr_block ) TO me->mt_backend_block_stack.
     ELSE.
-      me->mv_backend_is_inline_helper = abap_true.
+      " ...or set current inline helper values.
+      MOVE-CORRESPONDING ir_helper->* TO me->mv_backend_inline_helper.
     ENDIF.
 
     rs_result = me->backend_call_helper(
@@ -1472,7 +1776,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     IF lv_is_block = abap_true.
       DELETE me->mt_backend_block_stack INDEX lines( me->mt_backend_block_stack ).
     ELSE.
-      me->mv_backend_is_inline_helper = abap_false.
+      CLEAR me->mv_backend_inline_helper.
     ENDIF.
   ENDMETHOD.
 
@@ -1487,7 +1791,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   METHOD backend_eval_block_body.
 
     " Only allow fn-/reverse-invocation if current helper is not an inline-element.
-    IF me->mv_backend_is_inline_helper = abap_false.
+    IF me->mv_backend_inline_helper IS INITIAL.
       DATA(lr_block) = me->backend_get_last_block( ).
 
       " Return nothing. This method is not meant to be called externally.
@@ -1501,7 +1805,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ASSIGN COMPONENT iv_property OF STRUCTURE lr_parser_block->* TO FIELD-SYMBOL(<body>).
       ls_body = <body>.
 
-      CLEAR lr_block->params.
+      CLEAR lr_block->args.
       DATA(lv_index) = 1.
 
       " Fill block parameters with values.
@@ -1514,7 +1818,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           EXIT.
         ENDIF.
 
-        APPEND VALUE #( name = ls_parser_block_param data = ls_data ) TO lr_block->params.
+        APPEND VALUE #( param = ls_parser_block_param data = ls_data ) TO lr_block->args.
         lv_index = lv_index + 1.
       ENDLOOP.
 
@@ -1527,12 +1831,14 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
   ENDMETHOD.
 
+
   METHOD backend_eval_cond_block.
 
     DATA(lv_lines) = lines( it_args ).
 
     IF lv_lines <> 1.
-      rs_result-error = |Expected exactly 1 argument but got { lv_lines }|.
+      rs_result-error = me->backend_n_args_helper_error( iv_expected = 1 iv_actual = lv_lines ).
+      RETURN.
     ENDIF.
 
     DATA(lr_condition) = it_args[ 1 ]-this.
@@ -1563,7 +1869,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DATA(lv_lines) = lines( it_args ).
 
     IF lv_lines <> 1.
-      rs_result-error = |Expected exactly 1 argument but got { lv_lines }|.
+      rs_result-error = me->backend_n_args_helper_error( iv_expected = 1 iv_actual = lv_lines ).
+      RETURN.
     ENDIF.
 
     DATA: ls_result TYPE ts_text_result,
@@ -1659,7 +1966,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           ENDLOOP.
 
         WHEN OTHERS.
-          rs_result-error = 'Data is neither a structure nor an object'.
+          rs_result-error = me->error( 'Data is neither a structure nor an object' ).
           RETURN.
       ENDCASE.
 
@@ -1674,7 +1981,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DATA(lv_lines) = lines( it_args ).
 
     IF lv_lines <> 1.
-      rs_result-error = |Expected exactly 1 argument but got { lv_lines }|.
+      rs_result-error = me->backend_n_args_helper_error( iv_expected = 1 iv_actual = lv_lines ).
+      RETURN.
     ENDIF.
 
     DATA(lr_data) = it_args[ 1 ].
@@ -1719,20 +2027,24 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD backend_eval_sub_expr.
+    rs_result = me->backend_eval_expr(
+      ir_stmt = ir_sub_expr->expr
+      is_data = is_data
+    ).
+  ENDMETHOD.
+
+
   METHOD backend_eval_path.
+    CONSTANTS c_parent_no_ts_data_struct TYPE string VALUE 'Parent is not a ts_data struct'.
+
     DATA lr_parent TYPE REF TO ts_data.
     DATA(lr_data) = NEW ts_data( ).
 
     lr_data->* = is_data.
 
+    DATA(ls_token) = ir_path->token.
     DATA(lt_parts) = ir_path->parts.
-    DATA(lv_lines) = lines( lt_parts ).
-
-    IF lv_lines = 0.
-      rs_result-error = 'Path contains no parts'.
-      RETURN.
-    ENDIF.
-
     DATA(lv_relative_path_found) = abap_false.
     DATA(lv_index) = 1.
 
@@ -1742,21 +2054,21 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         TRY.
             lr_parent ?= lr_data->parent.
           CATCH cx_root.
-            rs_result-error = 'Parent is not a ts_data struct'.
+            rs_result-error = me->backend_build_error( iv_error = c_parent_no_ts_data_struct is_token = ls_token ).
             RETURN.
         ENDTRY.
 
         DELETE lt_parts INDEX 1.
 
         IF lr_parent IS NOT BOUND.
-          rs_result-error = 'No parent found'.
+          rs_result-error = me->backend_build_error( iv_error = 'No parent found' is_token = ls_token ).
           RETURN.
         ENDIF.
 
         lr_data = lr_parent.
 
         IF sy-subrc <> 0.
-          rs_result-error = 'Parent has the wrong type'.
+          rs_result-error = me->backend_build_error( iv_error = 'Parent has the wrong type' is_token = ls_token ).
           RETURN.
         ENDIF.
 
@@ -1766,11 +2078,18 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ENDIF.
     ENDWHILE.
 
+    " Do actual evaluation of lt_parts lines here because there might have been removed some in the previous step.
+    DATA(lv_lines) = lines( lt_parts ).
+
+    IF lv_lines = 0.
+      rs_result-error = me->backend_build_error( iv_error = 'Path contains no parts' is_token = ls_token ).
+      RETURN.
+    ENDIF.
+
     lv_index = 1.
 
     DATA: lt_path_parts TYPE string_table,
           lv_kind       TYPE e_backend_data_kinds.
-
 
     DATA(lv_property_found) = abap_false.
 
@@ -1789,6 +2108,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         ELSEIF lv_relative_path_found = abap_false.
           DATA(lv_block_index) = lines( me->mt_backend_block_stack ).
 
+          " Use a do-loop to look for a properly named block parameter in the block stack from bottom to top (latest first).
           DO.
             DATA(lr_block) = backend_get_block( lv_block_index ).
 
@@ -1796,10 +2116,32 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
               EXIT.
             ENDIF.
 
-            DATA(ls_data) = VALUE #( lr_block->params[ name = lv_part ] OPTIONAL ).
+            DATA(ls_arg) = VALUE #( lr_block->args[ param-name = lv_part ] OPTIONAL ).
 
-            IF ls_data IS NOT INITIAL.
-              GET REFERENCE OF ls_data-data INTO lr_data.
+            IF ls_arg IS NOT INITIAL.
+              GET REFERENCE OF ls_arg-data INTO lr_data.
+
+              " Try to evaluate is found data is a literal.
+              DATA(ls_literal_result) = me->backend_eval_literal_expr( ir_stmt = lr_data->this ).
+
+              " If it is a literal, evaluate its value.
+              IF ls_literal_result-error IS INITIAL.
+                ASSIGN COMPONENT 'value' OF STRUCTURE lr_data->this->* TO FIELD-SYMBOL(<value>).
+
+                IF sy-subrc <> 0.
+                  rs_result-error = me->backend_build_error( iv_error = 'Literal has no value property' is_token = ls_arg-param-token ).
+                  RETURN.
+                ENDIF.
+
+                GET REFERENCE OF <value> INTO DATA(lr_value).
+
+                " Create literal data.
+                lr_data = NEW ts_data(
+                  this   = lr_value
+                  parent = lr_parent
+                ).
+              ENDIF.
+
               lv_skip = abap_true.
               EXIT.
             ENDIF.
@@ -1837,10 +2179,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
               lr_data = NEW ts_data(
                 this = NEW ts_parser_string_literal( value = rs_helper_result-text token = ir_path->token )
               ).
+              lv_kind = e_backend_data_kind_simple.
             ENDIF.
           ENDIF.
 
-          rs_result-error = |Field { lv_part } doesn't exist|.
+          rs_result-error = me->backend_build_error( iv_error = |Field { lv_part } doesn't exist| is_token = ls_token ).
           RETURN.
         ENDIF.
 
@@ -1854,7 +2197,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
             " If it's not the last part of the evaluation, exit with error. Otherwise, the property is just undefined.
             IF lv_index < lv_lines.
-              rs_result-error = |{ lv_part } cannot be evaluated on undefined|.
+              rs_result-error = me->backend_build_error( iv_error = |{ lv_part } cannot be evaluated on undefined| is_token = ls_token ).
               RETURN.
             ELSE.
               EXIT.
@@ -1888,7 +2231,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
               TRY.
                   lr_data ?= lr_data->parent.
                 CATCH cx_root.
-                  rs_result-error = 'Parent is not a ts_data struct'.
+                  rs_result-error = me->backend_build_error( iv_error = c_parent_no_ts_data_struct is_token = ls_token ).
                   RETURN.
               ENDTRY.
             ELSE.
@@ -2027,5 +2370,22 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       CATCH cx_root INTO DATA(lx_error).
         rs_result-error = lx_error->get_longtext( ).
     ENDTRY.
+  ENDMETHOD.
+
+
+  METHOD backend_get_token_property.
+    IF ir_struct IS BOUND.
+      DATA(lv_kind) = me->backend_get_data_kind( ir_struct ).
+
+      " Make sure the passed data is a struct, because on simple data like integer it would crash
+      IF lv_kind = e_backend_data_kind_struct.
+        DATA ls_token_base TYPE ts_parser_stmt_base.
+        MOVE-CORRESPONDING ir_struct->* TO ls_token_base.
+
+        IF sy-subrc = 0.
+          rs_token = ls_token_base-token.
+        ENDIF.
+      ENDIF.
+    ENDIF.
   ENDMETHOD.
 ENDCLASS.

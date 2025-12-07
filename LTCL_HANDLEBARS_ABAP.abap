@@ -16,6 +16,8 @@ CLASS ltc_handlebars_abap DEFINITION FOR TESTING
 
     TYPES: tt_people TYPE STANDARD TABLE OF ts_person WITH DEFAULT KEY.
 
+    CONSTANTS: c_empty_error TYPE string VALUE ''.
+
     DATA:
       f_Cut TYPE REF TO zcl_handlebars_abap.  "class under test
 
@@ -27,6 +29,8 @@ ENDCLASS.
 CLASS ltc_handlebars_abap IMPLEMENTATION.
   METHOD template_structure_success.
     DATA(ls_compile_result) = zcl_handlebars_abap=>compile(
+      '{{! Simple comment }}' &
+      '{{!-- Complex {{comment}} --}}' &
       '{{#with this.title as |title|}}' &
         '{{#if title.front}}' &
           '{{title.front}} ' &
@@ -35,12 +39,14 @@ CLASS ltc_handlebars_abap IMPLEMENTATION.
 
       '{{firstName}} {{lastName}}'
     ).
-    DATA(lr_person) = NEW ts_person(
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_compile_result-error ).
+
+    DATA(lr_person) = VALUE ts_person(
       title = VALUE #( front = 'Ing.' back = 'BSc.' ) firstName = 'Peter' lastName = 'Parker'
     ).
     DATA(ls_template_result) = ls_compile_result-template->template( lr_person ).
 
-    cl_abap_unit_assert=>assert_equals( exp = '' act = ls_template_result-error ).
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
     cl_abap_unit_assert=>assert_equals(
       exp = 'Ing. Peter Parker'
       act = ls_template_result-text
@@ -52,26 +58,29 @@ CLASS ltc_handlebars_abap IMPLEMENTATION.
       '{{#each this as |row index|}}' &
         '{{#with row.title as |title|}}' &
           '{{#if title.front}}' &
-            '{{title.front}} ' &
+            '{{title.front}}' &
           '{{else}}' &
+            'Some' &
           '{{/if}}' &
         '{{/with}}' &
 
-        '{{firstName}} {{lastName}}' &
+        ' {{firstName}} {{lastName}}' &
         '{{#unless index}}' &
           ', ' &
         '{{/unless}}' &
       '{{/each}}'
     ).
-    DATA(lr_people) = NEW tt_people(
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_compile_result-error ).
+
+    DATA(lr_people) = VALUE tt_people(
       ( title = VALUE #( back  = 'BSc.' ) firstName = 'Peter'  lastName  = 'Parker'  )
       ( title = VALUE #( front = 'Dr.'  ) firstName = 'Helene' lastName  = 'Fischer' )
     ).
     DATA(ls_template_result) = ls_compile_result-template->template( lr_people ).
 
-    cl_abap_unit_assert=>assert_equals( exp = '' act = ls_template_result-error ).
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
     cl_abap_unit_assert=>assert_equals(
-      exp = 'Peter Parker, Dr. Helene Fischer'
+      exp = 'Some Peter Parker, Dr. Helene Fischer'
       act = ls_template_result-text
     ).
   ENDMETHOD.
