@@ -32,7 +32,7 @@ DATA(ls_person) = VALUE ts_person(
 ).
 
 " Let the magic happen.
-DATA(ls_template_result) = ls_compile_result-template->template( ls_person ).
+DATA(ls_template_result) = ls_compile_result-instance->template( ls_person ).
 
 WRITE / ls_template_result-text. " Prints 'Ing. Peter Parker'.
 ```
