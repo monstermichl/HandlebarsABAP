@@ -1,15 +1,9 @@
 CLASS zcl_handlebars_abap DEFINITION
   PUBLIC
   FINAL
-  CREATE PUBLIC .
+  CREATE PRIVATE .
 
   PUBLIC SECTION.
-    TYPES: BEGIN OF ts_helper,
-             name   TYPE string,
-             object TYPE REF TO object,
-             method TYPE string,
-           END OF ts_helper.
-
     TYPES: BEGIN OF ts_compile_result,
              template TYPE REF TO zcl_handlebars_abap,
              error    TYPE string,
@@ -30,44 +24,133 @@ CLASS zcl_handlebars_abap DEFINITION
              parent TYPE REF TO data, " ts_data
            END OF ts_data.
 
-    TYPES: tt_data TYPE TABLE OF ts_data.
+    TYPES: BEGIN OF ts_class_helper,
+             class_name  TYPE string,
+             method_name TYPE string,
+           END OF ts_class_helper.
 
+    TYPES: BEGIN OF ts_object_helper,
+             object      TYPE REF TO object,
+             method_name TYPE string,
+           END OF ts_object_helper.
+
+    TYPES: BEGIN OF ts_func_module_helper,
+             function_name TYPE string,
+           END OF ts_func_module_helper.
+
+    TYPES: BEGIN OF ts_form_helper,
+             form_name   TYPE string,
+             report_name TYPE string,
+           END OF ts_form_helper.
+
+    TYPES: BEGIN OF ts_helper,
+             name   TYPE string,
+             helper TYPE REF TO data,
+           END OF ts_helper.
+
+    TYPES: BEGIN OF ts_is_truthy_result,
+             truthy TYPE abap_bool,
+             error  TYPE string,
+           END OF ts_is_truthy_result.
+
+    TYPES: tt_data TYPE STANDARD TABLE OF ts_data WITH DEFAULT KEY.
+
+    "! Compiles the passed Handlebars template.
+    "!
+    "! @parameter iv_template_string | Handebars template string.
     CLASS-METHODS compile
       IMPORTING
         iv_template_string TYPE string
       RETURNING
         VALUE(rs_result)   TYPE ts_compile_result.
 
-    CLASS-METHODS register_helper
+    "! Registers a helper method globally. The passed method must implement the following signature.
+    "!
+    "! METHODS helper_method
+    "!   IMPORTING
+    "!     io_instance      TYPE zcl_handlebars_abap
+    "!     iv_name          TYPE string
+    "!     it_args          TYPE tt_data
+    "!     is_data          TYPE ts_data
+    "!   RETURNING
+    "!     VALUE(rs_result) TYPE ts_text_result.
+    "!
+    "! @parameter iv_name   | Helper name.
+    "! @parameter ir_helper | Helper configuration (ts_class_helper | ts_object_helper | ts_func_module_helper | ts_form_helper).
+    CLASS-METHODS register_helper_static
       IMPORTING
-        iv_name   TYPE string
-        iv_method TYPE string
-        ir_object TYPE REF TO object OPTIONAL.
+        iv_name         TYPE string
+        ir_helper       TYPE any
+      RETURNING
+        VALUE(rv_error) TYPE string.
 
+    "! Registers a helper method. The method must implement the following signature.
+    "!
+    "! METHODS helper_method
+    "!   IMPORTING
+    "!     io_instance      TYPE zcl_handlebars_abap
+    "!     iv_name          TYPE string
+    "!     it_args          TYPE tt_data
+    "!     is_data          TYPE ts_data
+    "!   RETURNING
+    "!     VALUE(rs_result) TYPE ts_text_result.
+    "!
+    "! @parameter iv_name   | Helper name.
+    "! @parameter ir_helper | Helper configuration (ts_class_helper | ts_object_helper | ts_func_module_helper | ts_form_helper).
+    METHODS register_helper
+      IMPORTING
+        iv_name         TYPE string
+        ir_helper       TYPE any
+      RETURNING
+        VALUE(rv_error) TYPE string.
+
+    "! Fills the compiled template with the passed data.
+    "!
+    "! @parameter ia_data   | A struct or table.
     METHODS template
       IMPORTING
         ia_data          TYPE any OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_template_result.
 
+    "! Renders the current block's content.
+    "!
+    "! @parameter it_data | Data that shall be available within the block. The first entry is considered as 'this'.
     METHODS fn
       IMPORTING
         it_data          TYPE tt_data OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
+    "! Renders the current block's else-content.
+    "!
+    "! @parameter it_data | Data that shall be available within the block. The first entry is considered as 'this'.
     METHODS inverse
       IMPORTING
         it_data          TYPE tt_data OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
+    "! Creates an error message with added token information.
+    "!
+    "! @parameter iv_error       | Error string.
+    "! @parameter iv_param_index | Optional argument to specify at which argument the error occurred.
+    "! @parameter rv_error       | Enhanced error string.
     METHODS error
       IMPORTING
         iv_error        TYPE string
         iv_param_index  TYPE i OPTIONAL
       RETURNING
         VALUE(rv_error) TYPE string.
+
+    "! Checks if the passed data can be considered truthy.
+    "!
+    "! @parameter ir_data | Data to check.
+    METHODS is_truthy
+      IMPORTING
+        ir_data          TYPE REF TO data
+      RETURNING
+        VALUE(rs_result) TYPE ts_is_truthy_result.
 
   PROTECTED SECTION.
 
@@ -79,13 +162,49 @@ CLASS zcl_handlebars_abap DEFINITION
              error  TYPE string,
            END OF ts_find_helper_result.
 
-    CLASS-DATA: mt_helpers TYPE tt_helpers.
+    TYPES: BEGIN OF ts_get_data_type_result,
+             name   TYPE string,
+             is_ref TYPE abap_bool,
+           END OF ts_get_data_type_result.
+
+    CLASS-DATA: cr_helper_instance TYPE REF TO zcl_handlebars_abap.
+
+    DATA: mt_helpers TYPE tt_helpers.
+
+    CLASS-METHODS get_instance
+      RETURNING
+        VALUE(rr_instance) TYPE REF TO zcl_handlebars_abap.
+
+    CLASS-METHODS register_helper_internal
+      IMPORTING
+        ir_instance     TYPE REF TO zcl_handlebars_abap
+        iv_name         TYPE string
+        ir_helper       TYPE any
+      RETURNING
+        VALUE(rv_error) TYPE string.
 
     CLASS-METHODS find_helper
       IMPORTING
+        ir_instance      TYPE REF TO zcl_handlebars_abap
         iv_name          TYPE string
       RETURNING
         VALUE(rs_result) TYPE ts_find_helper_result.
+
+    CLASS-METHODS get_data_type
+      IMPORTING
+        ia_data        TYPE any
+      RETURNING
+        VALUE(rs_type) TYPE ts_get_data_type_result.
+
+    CLASS-METHODS any_to_ref_to_data
+      IMPORTING
+        ia_data        TYPE any
+      RETURNING
+        VALUE(rr_data) TYPE REF TO data.
+
+    METHODS constructor
+      IMPORTING
+        iv_import_static_helpers TYPE abap_bool.
 
     " .:: Tokenizer section.
     TYPES: BEGIN OF ENUM e_tokenizer_token_types,
@@ -141,6 +260,9 @@ CLASS zcl_handlebars_abap DEFINITION
 
     DATA: mt_tokenizer_tokens TYPE tt_tokenizer_tokens.
 
+    "! Separates the provided Handebars template string into tokens.
+    "!
+    "! @parameter iv_template_string | Handlebars template string.
     METHODS tokenizer_tokenize
       IMPORTING
         iv_template_string TYPE string
@@ -267,6 +389,7 @@ CLASS zcl_handlebars_abap DEFINITION
     DATA: mv_parser_index TYPE i,
           mr_template     TYPE REF TO data.
 
+    "! Creates an AST by putting the parsed tokens into context.
     METHODS parser_parse
       RETURNING
         VALUE(rv_error) TYPE string.
@@ -381,11 +504,6 @@ CLASS zcl_handlebars_abap DEFINITION
              error TYPE string,
            END OF ts_backend_path_eval_result.
 
-    TYPES: BEGIN OF ts_backend_is_truthy_result,
-             truthy TYPE abap_bool,
-             error  TYPE string,
-           END OF ts_backend_is_truthy_result.
-
     TYPES: BEGIN OF ts_backend_block_arg,
              param TYPE ts_parser_block_param,
              data  TYPE ts_data,
@@ -459,31 +577,34 @@ CLASS zcl_handlebars_abap DEFINITION
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
-    METHODS backend_eval_block_body
+    METHODS backend_eval_block_helper
       IMPORTING
         iv_property      TYPE string
         it_data          TYPE tt_data OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
-    METHODS backend_eval_cond_block
+    METHODS backend_eval_cond_helper
       IMPORTING
+        io_instance      TYPE REF TO zcl_handlebars_abap
         iv_name          TYPE string
         it_args          TYPE tt_data
         is_data          TYPE ts_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
-    METHODS backend_eval_each_block
+    METHODS backend_eval_each_helper
       IMPORTING
+        io_instance      TYPE REF TO zcl_handlebars_abap
         iv_name          TYPE string
         it_args          TYPE tt_data
         is_data          TYPE ts_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
-    METHODS backend_eval_with_block
+    METHODS backend_eval_with_helper
       IMPORTING
+        io_instance      TYPE REF TO zcl_handlebars_abap
         iv_name          TYPE string
         it_args          TYPE tt_data
         is_data          TYPE ts_data
@@ -499,6 +620,7 @@ CLASS zcl_handlebars_abap DEFINITION
 
     METHODS backend_eval_log_helper
       IMPORTING
+        io_instance      TYPE REF TO zcl_handlebars_abap
         iv_name          TYPE string
         it_args          TYPE tt_data
         is_data          TYPE ts_data
@@ -519,12 +641,6 @@ CLASS zcl_handlebars_abap DEFINITION
       RETURNING
         VALUE(rs_result) TYPE ts_backend_path_eval_result.
 
-    METHODS backend_get_data_type
-      IMPORTING
-        ir_data        TYPE REF TO data
-      RETURNING
-        VALUE(rv_type) TYPE string.
-
     METHODS backend_get_data_kind
       IMPORTING
         ir_data        TYPE REF TO data
@@ -540,12 +656,6 @@ CLASS zcl_handlebars_abap DEFINITION
     METHODS backend_get_last_block
       RETURNING
         VALUE(rr_block) TYPE REF TO ts_backend_block_stack_block.
-
-    METHODS backend_is_truthy
-      IMPORTING
-        ir_data          TYPE REF TO data
-      RETURNING
-        VALUE(rs_result) TYPE ts_backend_is_truthy_result.
 
     METHODS backend_call_helper
       IMPORTING
@@ -568,14 +678,43 @@ ENDCLASS.
 CLASS zcl_handlebars_abap IMPLEMENTATION.
 
   METHOD compile.
-    DATA(lo_template) = NEW zcl_handlebars_abap(  ).
-    DATA(lv_error) = lo_template->tokenizer_tokenize( iv_template_string ).
+    DATA(lv_template_string) = iv_template_string.
+    DATA(lo_template) = NEW zcl_handlebars_abap( abap_true ).
+
+    " First, try to load stored HTML template.
+    IF strlen( lv_template_string ) <= 40.
+      DATA: lt_html_table  TYPE swww_t_html_table,
+            lt_merge_table TYPE swww_t_merge_table.
+
+      DATA(lv_template_name) = CONV swww_t_template_name( lv_template_string ).
+
+      CALL FUNCTION 'WWW_HTML_MERGER'
+        EXPORTING
+          template    = lv_template_name
+        IMPORTING
+          html_table  = lt_html_table
+        CHANGING
+          merge_table = lt_merge_table.
+
+      " If loading the template was successful, replace iv_template_string with the string from the loaded template.
+      IF sy-subrc = 0.
+        CLEAR lv_template_string.
+
+        LOOP AT lt_html_table INTO DATA(ls_html_row).
+          lv_template_string = |{ lv_template_string }{ CONV string( ls_html_row-line ) }|.
+        ENDLOOP.
+      ENDIF.
+    ENDIF.
+
+    " Tokenize template string (disassemble it into usable chunks).
+    DATA(lv_error) = lo_template->tokenizer_tokenize( lv_template_string ).
 
     IF lv_error IS NOT INITIAL.
       rs_result-error = lv_error.
       RETURN.
     ENDIF.
 
+    " Parse tokens and build an AST.
     lv_error = lo_template->parser_parse( ).
 
     IF lv_error IS NOT INITIAL.
@@ -583,41 +722,30 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " Register default block-helpers.
-    zcl_handlebars_abap=>register_helper( iv_name = lo_template->c_if     ir_object = lo_template iv_method = 'backend_eval_cond_block' ).
-    zcl_handlebars_abap=>register_helper( iv_name = lo_template->c_unless ir_object = lo_template iv_method = 'backend_eval_cond_block' ).
-    zcl_handlebars_abap=>register_helper( iv_name = lo_template->c_each   ir_object = lo_template iv_method = 'backend_eval_each_block' ).
-    zcl_handlebars_abap=>register_helper( iv_name = lo_template->c_with   ir_object = lo_template iv_method = 'backend_eval_with_block' ).
-
-    " Register default inline-helpers.
-    zcl_handlebars_abap=>register_helper( iv_name = 'log' ir_object = lo_template iv_method = 'backend_eval_log_helper' ).
-
     rs_result-template = lo_template.
   ENDMETHOD.
 
-  METHOD register_helper.
-    DATA(ls_helper) = VALUE ts_helper( name = iv_name method = iv_method object = ir_object ).
-    DATA(ls_find_helper_result) = zcl_handlebars_abap=>find_helper( iv_name ).
 
-    " If a corresponding helper was found, update it.
-    IF ls_find_helper_result-error IS INITIAL.
-      MOVE-CORRESPONDING ls_helper TO ls_find_helper_result-helper->*.
-    ELSE.
-      APPEND ls_helper TO zcl_handlebars_abap=>mt_helpers.
-    ENDIF.
+  METHOD register_helper_static.
+    zcl_handlebars_abap=>register_helper_internal(
+      ir_instance = zcl_handlebars_abap=>get_instance( )
+      iv_name     = iv_name
+      ir_helper   = ir_helper
+    ).
+  ENDMETHOD.
+
+
+  METHOD register_helper.
+    zcl_handlebars_abap=>register_helper_internal(
+      ir_instance = me
+      iv_name     = iv_name
+      ir_helper   = ir_helper
+    ).
   ENDMETHOD.
 
 
   METHOD template.
-    DATA lr_data TYPE REF TO data.
-    DATA(lo_descr) = cl_abap_typedescr=>describe_by_data( ia_data ).
-
-    " If passed data is not a reference, get its reference.
-    IF lo_descr->kind <> lo_descr->kind_ref.
-      GET REFERENCE OF ia_data INTO lr_data.
-    ELSE.
-      lr_data = ia_data.
-    ENDIF.
+    DATA(lr_data) = me->any_to_ref_to_data( ia_data ).
 
     DATA(ls_result) = me->backend_eval_stmt(
       ir_stmt = me->mr_template
@@ -637,21 +765,23 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD fn.
-    rs_result = me->backend_eval_block_body( iv_property = 'body' it_data = it_data ).
+    rs_result = me->backend_eval_block_helper( iv_property = 'body' it_data = it_data ).
   ENDMETHOD.
 
 
   METHOD inverse.
-    rs_result = me->backend_eval_block_body( iv_property = 'else' it_data = it_data ).
+    rs_result = me->backend_eval_block_helper( iv_property = 'else' it_data = it_data ).
   ENDMETHOD.
 
 
   METHOD error.
     DATA ls_helper TYPE ts_parser_helper.
 
+    " If current context is an inline-helper, get its values...
     IF me->mv_backend_inline_helper IS NOT INITIAL.
       MOVE-CORRESPONDING me->mv_backend_inline_helper TO ls_helper.
     ELSE.
+      " ...otherwise get the current block helper.
       DATA(lr_block) = me->backend_get_last_block( ).
 
       IF lr_block IS BOUND.
@@ -678,8 +808,51 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD get_instance.
+    IF zcl_handlebars_abap=>cr_helper_instance IS NOT BOUND.
+      zcl_handlebars_abap=>cr_helper_instance = NEW zcl_handlebars_abap( abap_false ).
+    ENDIF.
+
+    rr_instance = zcl_handlebars_abap=>cr_helper_instance.
+  ENDMETHOD.
+
+
+  METHOD register_helper_internal.
+    IF iv_name IS INITIAL.
+      rv_error = 'No helper name provided'.
+      RETURN.
+    ENDIF.
+
+    DATA(lr_helper) = zcl_handlebars_abap=>any_to_ref_to_data( ir_helper ).
+    DATA(ls_type) = zcl_handlebars_abap=>get_data_type( ir_helper ).
+    DATA(lv_type_name) = ls_type-name.
+
+    CASE lv_type_name.
+      WHEN 'ts_class_helper'       OR
+           'ts_object_helper'      OR
+           'ts_func_module_helper' OR
+           'ts_form_helper'.
+        " Good cases, nothing to do.
+
+      WHEN OTHERS.
+        rv_error = |Unsupported helper type { lv_type_name }|.
+        RETURN.
+    ENDCASE.
+
+    DATA(ls_find_helper_result) = zcl_handlebars_abap=>find_helper( ir_instance = ir_instance iv_name = iv_name ).
+
+    " If a corresponding helper was found, update it.
+    IF ls_find_helper_result-error IS INITIAL.
+      ls_find_helper_result-helper->helper ?= lr_helper.
+    ELSE.
+      APPEND VALUE ts_helper( name = iv_name helper = lr_helper ) TO ir_instance->mt_helpers.
+    ENDIF.
+  ENDMETHOD.
+
+
   METHOD find_helper.
-    READ TABLE zcl_handlebars_abap=>mt_helpers REFERENCE INTO DATA(lr_helper) WHERE name = iv_name.
+    " Try to get a registered helper by its name
+    READ TABLE ir_instance->mt_helpers REFERENCE INTO DATA(lr_helper) WHERE name = iv_name.
 
     IF sy-subrc <> 0.
       rs_result-error = |No helper found for { iv_name }|.
@@ -687,6 +860,59 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     rs_result-helper = lr_helper.
+  ENDMETHOD.
+
+
+  METHOD get_data_type.
+    DATA(lo_desc) = cl_abap_typedescr=>describe_by_data( ia_data ).
+    DATA(lv_is_ref) = abap_false.
+
+    IF lo_desc->kind = lo_desc->kind_ref.
+      lv_is_ref = abap_true.
+      lo_desc = cl_abap_typedescr=>describe_by_data_ref( ia_data ).
+    ENDIF.
+
+    DATA(lv_type) = lo_desc->get_relative_name( ).
+    TRANSLATE lv_type TO LOWER CASE.
+
+    rs_type-is_ref = lv_is_ref.
+    rs_type-name = lv_type.
+  ENDMETHOD.
+
+
+  METHOD any_to_ref_to_data.
+    DATA(ls_type) = zcl_handlebars_abap=>get_data_type( ia_data ).
+
+    " If passed data is not a reference, get its reference.
+    IF ls_type-is_ref = abap_false.
+      DATA(lo_type) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_data( ia_data ) ).
+
+      CREATE DATA rr_data TYPE HANDLE lo_type.
+      GET REFERENCE OF ia_data INTO rr_data.
+    ELSE.
+      rr_data ?= ia_data.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD constructor.
+    IF iv_import_static_helpers = abap_true.
+      DATA(lr_helper_instance) = zcl_handlebars_abap=>get_instance( ).
+
+      " Add globally registered helpers.
+      LOOP AT lr_helper_instance->mt_helpers INTO DATA(ls_helper).
+        me->register_helper( iv_name = ls_helper-name ir_helper = ls_helper-helper ).
+      ENDLOOP.
+    ENDIF.
+
+    " Register default block-helpers.
+    me->register_helper( iv_name = c_if     ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_cond_helper' ) ).
+    me->register_helper( iv_name = c_unless ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_cond_helper' ) ).
+    me->register_helper( iv_name = c_each   ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_each_helper' ) ).
+    me->register_helper( iv_name = c_with   ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_with_helper' ) ).
+
+    " Register default inline-helpers.
+    me->register_helper( iv_name = 'log' ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_log_helper' ) ).
   ENDMETHOD.
 
 
@@ -1030,6 +1256,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DATA(lv_expect_eop) = abap_true.
 
     CASE ls_token-type.
+
+        " If the current token is a # it's the beginning of a block.
       WHEN e_token_type_hashtag.
         CASE ls_next_token-type.
           WHEN e_token_type_path.
@@ -1039,11 +1267,13 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
             lv_valid = abap_false.
         ENDCASE.
 
+        " If the current token is a text-token, its value is used directly.
       WHEN e_token_type_text.
         me->parser_eat( ).
         ls_result-stmt = NEW ts_parser_text( value = ls_token-value token = ls_token ).
         lv_expect_eop = abap_false.
 
+        " If it's not a statement, it's probably an expression.
       WHEN OTHERS.
         ls_result = me->parser_eval_expr( ).
     ENDCASE.
@@ -1126,11 +1356,13 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DATA(ls_token) = me->parser_eat( ).
     DATA(ls_start_token) = ls_token.
 
+    " Make sure block starts with #.
     IF ls_token-type <> e_token_type_hashtag.
       rs_result-error = me->parser_build_expected_error( iv_error = '#' is_token = ls_token ).
       RETURN.
     ENDIF.
 
+    " Make sure a helper-name exists.
     DATA(ls_eval_helper_result) = me->parser_eval_helper_name( ).
     DATA(lv_error) = ls_eval_helper_result-error.
 
@@ -1186,6 +1418,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         DATA lr_path TYPE REF TO ts_parser_path.
         lr_path ?= ls_eval_path_result-stmt.
 
+        " A block parameter must only consist of one word.
         IF lr_path->is_identifier <> abap_true.
           rs_result-error = me->parser_build_expected_error( iv_error = 'identifier' is_token = ls_token ).
           RETURN.
@@ -1213,6 +1446,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     ls_token = me->parser_peek( ).
 
+    " Evaluate block-statements.
     DATA(ls_stmts_result) = me->parser_eval_stmts(
       it_termination_token_types = VALUE #( ( e_token_type_else ) ( e_token_type_slash ) ) " Terminate on else and /.
     ).
@@ -1223,7 +1457,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " Create instance of ts_parser_block on heap.
+    " Create instance of ts_parser_block on the heap.
     DATA(ls_block) = NEW ts_parser_block(
       name   = lv_start_helper_name
       args   = lt_args
@@ -1246,6 +1480,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         RETURN.
       ENDIF.
 
+      " Evaluate else-statements.
       ls_stmts_result = me->parser_eval_stmts(
         it_termination_token_types = VALUE #( ( e_token_type_slash ) ) " Terminate on /.
       ).
@@ -1261,6 +1496,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     ls_token = me->parser_eat( ).
 
+    " Make sure block is terminated with a slash...
     IF ls_token-type <> e_token_type_slash.
       rs_result-error = me->parser_build_expected_error( iv_error = '/' is_token = ls_token ).
       RETURN.
@@ -1270,6 +1506,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     DATA(lv_end_helper_name) = ls_token-value.
 
+    " ...followed by the helper name.
     IF ls_token-type <> e_token_type_path OR lv_end_helper_name <> lv_start_helper_name.
       rs_result-error = me->parser_build_expected_error( iv_error = |{ lv_start_helper_name } but got { lv_end_helper_name }| is_token = ls_token ).
       RETURN.
@@ -1289,6 +1526,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    " Evaluate helper arguments.
     DATA(ls_eval_args_result) = me->parser_eval_args( it_termination_token_types ).
     lv_error = ls_eval_args_result-error.
 
@@ -1552,9 +1790,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD backend_eval_stmt.
-    DATA(lv_type) = me->backend_get_data_type( ir_stmt ).
+    DATA(ls_type) = me->get_data_type( ir_stmt ).
+    DATA(ls_type_name) = ls_type-name.
 
-    CASE lv_type.
+    CASE ls_type_name.
       WHEN 'ts_parser_template'.
         DATA lr_template TYPE REF TO ts_parser_template.
         lr_template ?= ir_stmt.
@@ -1617,9 +1856,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           lr_data  TYPE REF TO data,
           lv_error TYPE string.
 
-    DATA(lv_type) = me->backend_get_data_type( ir_stmt ).
+    DATA(lv_type) = me->get_data_type( ir_stmt ).
+    DATA(lv_type_name) = lv_type-name.
 
-    CASE lv_type.
+    CASE lv_type_name.
       WHEN 'ts_parser_sub_expr'.
         DATA lr_sub_expr TYPE REF TO ts_parser_sub_expr.
         lr_sub_expr ?= ir_stmt.
@@ -1676,7 +1916,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       WHEN OTHERS.
         DATA(ls_token) = me->backend_get_token_property( ir_stmt ).
 
-        rs_result-error = me->backend_build_error( iv_error = |Unknown expression type { lv_type }| is_token = ls_token ).
+        rs_result-error = me->backend_build_error( iv_error = |Unknown expression type { lv_type_name }| is_token = ls_token ).
         RETURN.
     ENDCASE.
 
@@ -1689,9 +1929,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DATA: ls_data TYPE ts_data,
           lr_data TYPE REF TO data.
 
-    DATA(lv_type) = me->backend_get_data_type( ir_stmt ).
+    DATA(lv_type) = me->get_data_type( ir_stmt ).
+    DATA(lv_type_name) = lv_type-name.
 
-    CASE lv_type.
+    CASE lv_type_name.
       WHEN 'ts_parser_bool_literal'.
         lr_data = ir_stmt.
 
@@ -1707,7 +1948,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       WHEN OTHERS.
         DATA(ls_token) = me->backend_get_token_property( ir_stmt ).
 
-        rs_result-error = me->backend_build_error( iv_error = |Unknown literal type { lv_type }| is_token = ls_token ).
+        rs_result-error = me->backend_build_error( iv_error = |Unknown literal type { lv_type_name }| is_token = ls_token ).
         RETURN.
     ENDCASE.
 
@@ -1788,7 +2029,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ).
   ENDMETHOD.
 
-  METHOD backend_eval_block_body.
+
+  METHOD backend_eval_block_helper.
 
     " Only allow fn-/reverse-invocation if current helper is not an inline-element.
     IF me->mv_backend_inline_helper IS INITIAL.
@@ -1832,7 +2074,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD backend_eval_cond_block.
+  METHOD backend_eval_cond_helper.
 
     DATA(lv_lines) = lines( it_args ).
 
@@ -1842,7 +2084,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     DATA(lr_condition) = it_args[ 1 ]-this.
-    DATA(ls_truthy_result) = me->backend_is_truthy( lr_condition ).
+    DATA(ls_truthy_result) = me->is_truthy( lr_condition ).
     DATA(lv_error) = ls_truthy_result-error.
 
     IF lv_error IS NOT INITIAL.
@@ -1865,7 +2107,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD backend_eval_each_block.
+  METHOD backend_eval_each_helper.
     DATA(lv_lines) = lines( it_args ).
 
     IF lv_lines <> 1.
@@ -1878,7 +2120,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     DATA(lr_iterable) = it_args[ 1 ]-this.
     DATA(lv_type) = me->backend_get_data_kind( lr_iterable ).
-    DATA(ls_truthy_result) = me->backend_is_truthy( lr_iterable ).
+    DATA(ls_truthy_result) = me->is_truthy( lr_iterable ).
 
     lv_error = ls_truthy_result-error.
 
@@ -1977,7 +2219,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD backend_eval_with_block.
+  METHOD backend_eval_with_helper.
     DATA(lv_lines) = lines( it_args ).
 
     IF lv_lines <> 1.
@@ -1986,7 +2228,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     DATA(lr_data) = it_args[ 1 ].
-    DATA(ls_truthy_result) = me->backend_is_truthy( lr_data-this ).
+    DATA(ls_truthy_result) = me->is_truthy( lr_data-this ).
     DATA(lv_error) = ls_truthy_result-error.
 
     IF lv_error IS NOT INITIAL.
@@ -2161,10 +2403,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           " If it's the first iteration and no property has been found, it's possible
           " that the path refers to an inline-helper.
           IF lv_index = 1.
-            DATA(ls_helper) = me->find_helper( lv_part ).
+            DATA(ls_find_helper_result) = me->find_helper( ir_instance = me iv_name = lv_part ).
 
             " If it's a helper, invoke it and use the result.
-            IF ls_helper IS NOT INITIAL.
+            IF ls_find_helper_result-error IS INITIAL.
               DATA(rs_helper_result) = me->backend_call_helper(
                 iv_name = lv_part
                 is_data = is_data
@@ -2177,9 +2419,9 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
               ENDIF.
 
               lr_data = NEW ts_data(
-                this = NEW ts_parser_string_literal( value = rs_helper_result-text token = ir_path->token )
+                this = NEW string( rs_helper_result-text )
               ).
-              lv_kind = e_backend_data_kind_simple.
+              EXIT.
             ENDIF.
           ENDIF.
 
@@ -2259,14 +2501,6 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD backend_get_data_type.
-    DATA(ls_descriptor) = cl_abap_typedescr=>describe_by_data_ref( ir_data ).
-    rv_type = ls_descriptor->get_relative_name( ).
-
-    TRANSLATE rv_type TO LOWER CASE.
-  ENDMETHOD.
-
-
   METHOD backend_get_data_kind.
     rv_kind = e_backend_data_kind_undefined.
 
@@ -2304,7 +2538,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD backend_is_truthy.
+  METHOD is_truthy.
     DATA(lv_kind) = me->backend_get_data_kind( ir_data ).
     DATA(lv_truthy) = abap_false.
 
@@ -2334,7 +2568,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD backend_call_helper.
-    DATA(ls_find_helper_result) = me->find_helper( iv_name ).
+    DATA(ls_find_helper_result) = me->find_helper( ir_instance = me iv_name = iv_name ).
     DATA(lv_error) = ls_find_helper_result-error.
 
     IF lv_error IS NOT INITIAL.
@@ -2343,30 +2577,92 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     DATA(lr_registered_helper) = ls_find_helper_result-helper.
-    DATA(lo_helper_object) = lr_registered_helper->object.
+    DATA(lr_helper) = lr_registered_helper->helper.
+    DATA(ls_type) = me->get_data_type( lr_helper ).
 
     TRY.
-        " Get method name and make sure it's all caps (otherwise an exception gets thrown on call).
-        DATA(lv_method) = lr_registered_helper->method.
-        TRANSLATE lv_method TO UPPER CASE.
+        DATA(lv_type_name) = ls_type-name.
 
-        IF lo_helper_object IS BOUND.
-          CALL METHOD lo_helper_object->(lv_method)
-            EXPORTING
-              iv_name   = iv_name
-              it_args   = it_args
-              is_data   = is_data
-            RECEIVING
-              rs_result = rs_result.
-        ELSE.
-          CALL METHOD (lv_method)
-            EXPORTING
-              iv_name   = iv_name
-              it_args   = it_args
-              is_data   = is_data
-            RECEIVING
-              rs_result = rs_result.
-        ENDIF.
+        CASE lv_type_name.
+          WHEN 'ts_class_helper'.
+            DATA ls_class_helper_config TYPE REF TO ts_class_helper.
+            ls_class_helper_config ?= lr_helper.
+
+            DATA(lv_class_name) = ls_class_helper_config->class_name.
+            DATA(lv_class_method_name) = ls_class_helper_config->method_name.
+
+            TRANSLATE lv_class_name TO UPPER CASE.
+            TRANSLATE lv_class_method_name TO UPPER CASE.
+
+            CALL METHOD (lv_class_name)=>(lv_class_method_name)
+              EXPORTING
+                io_instance = me
+                iv_name     = iv_name
+                it_args     = it_args
+                is_data     = is_data
+              RECEIVING
+                rs_result   = rs_result.
+
+          WHEN 'ts_object_helper'.
+            DATA ls_object_helper_config TYPE REF TO ts_object_helper.
+            ls_object_helper_config ?= lr_helper.
+
+            DATA(lv_object_method_name) = ls_object_helper_config->method_name.
+            TRANSLATE lv_object_method_name TO UPPER CASE.
+
+            CALL METHOD ls_object_helper_config->object->(lv_object_method_name)
+              EXPORTING
+                io_instance = me
+                iv_name     = iv_name
+                it_args     = it_args
+                is_data     = is_data
+              RECEIVING
+                rs_result   = rs_result.
+
+          WHEN 'ts_func_module_helper'.
+            DATA ls_func_module_helper_config TYPE REF TO ts_func_module_helper.
+            ls_func_module_helper_config ?= lr_helper.
+
+            DATA(lv_function_name) = ls_func_module_helper_config->function_name.
+            TRANSLATE lv_function_name TO UPPER CASE.
+
+            CALL FUNCTION ls_func_module_helper_config->function_name
+              EXPORTING
+                io_instance = me
+                iv_name     = iv_name
+                it_args     = it_args
+                is_data     = is_data
+              IMPORTING
+                es_result   = rs_result.
+
+          WHEN 'ts_form_helper'.
+            DATA ls_form_helper_config TYPE REF TO ts_form_helper.
+            ls_form_helper_config ?= lr_helper.
+
+            DATA(lv_form_name) = ls_form_helper_config->form_name.
+            DATA(lv_report_name) = ls_form_helper_config->report_name.
+
+            TRANSLATE lv_form_name TO UPPER CASE.
+            TRANSLATE lv_report_name TO UPPER CASE.
+
+            DATA(lv_name) = iv_name.
+            DATA(lt_args) = it_args.
+            DATA(ls_data) = is_data.
+
+            PERFORM (lv_form_name) IN PROGRAM (lv_report_name)
+              USING
+                me
+                lv_name
+                lt_args
+                ls_data
+              CHANGING
+                rs_result.
+
+          WHEN OTHERS.
+            rs_result-error = |Unsupported helper type { lv_type_name }|.
+            RETURN.
+        ENDCASE.
+
       CATCH cx_root INTO DATA(lx_error).
         rs_result-error = lx_error->get_longtext( ).
     ENDTRY.
