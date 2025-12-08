@@ -5,7 +5,7 @@ CLASS zcl_handlebars_abap DEFINITION
 
   PUBLIC SECTION.
     TYPES: BEGIN OF ts_compile_result,
-             template TYPE REF TO zcl_handlebars_abap,
+             instance TYPE REF TO zcl_handlebars_abap,
              error    TYPE string,
            END OF ts_compile_result.
 
@@ -722,7 +722,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    rs_result-template = lo_template.
+    rs_result-instance = lo_template.
   ENDMETHOD.
 
 

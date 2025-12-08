@@ -66,7 +66,7 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
     DATA(lr_person) = VALUE ts_person(
       title = VALUE #( front = 'Ing.' back = 'BSc.' ) firstName = 'Peter' lastName = 'Parker'
     ).
-    DATA(ls_template_result) = ls_compile_result-template->template( lr_person ).
+    DATA(ls_template_result) = ls_compile_result-instance->template( lr_person ).
 
     cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
     cl_abap_unit_assert=>assert_equals(
@@ -99,7 +99,7 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
       ( title = VALUE #( back  = 'BSc.' ) firstName = 'Peter'  lastName  = 'Parker'  )
       ( title = VALUE #( front = 'Dr.'  ) firstName = 'Helene' lastName  = 'Fischer' )
     ).
-    DATA(ls_template_result) = ls_compile_result-template->template( lr_people ).
+    DATA(ls_template_result) = ls_compile_result-instance->template( lr_people ).
 
     cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
     cl_abap_unit_assert=>assert_equals(
@@ -125,7 +125,7 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
       ( firstName = 'Peter'  )
       ( firstName = 'Helene' )
     ).
-    DATA(ls_template_result) = ls_compile_result-template->template( lr_people ).
+    DATA(ls_template_result) = ls_compile_result-instance->template( lr_people ).
 
     cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
 
