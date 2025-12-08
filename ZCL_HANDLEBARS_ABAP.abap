@@ -1,3 +1,4 @@
+" HandlebarsABAP 0.1.0
 CLASS zcl_handlebars_abap DEFINITION
   PUBLIC
   FINAL
