@@ -1,4 +1,4 @@
-" HandlebarsABAP 0.1.0
+" HandlebarsABAP 0.1.1
 CLASS zcl_handlebars_abap DEFINITION
   PUBLIC
   FINAL
@@ -691,11 +691,13 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
       CALL FUNCTION 'WWW_HTML_MERGER'
         EXPORTING
-          template    = lv_template_name
+          template           = lv_template_name
         IMPORTING
-          html_table  = lt_html_table
+          html_table         = lt_html_table
         CHANGING
-          merge_table = lt_merge_table.
+          merge_table        = lt_merge_table
+        EXCEPTIONS
+          template_not_found = 1.
 
       " If loading the template was successful, replace iv_template_string with the string from the loaded template.
       IF sy-subrc = 0.
