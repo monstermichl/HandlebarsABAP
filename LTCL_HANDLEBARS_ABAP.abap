@@ -34,6 +34,7 @@ CLASS ltcl_handlebars_abap DEFINITION FOR TESTING
     METHODS: template_structure_success FOR TESTING.
     METHODS: template_table_success FOR TESTING.
     METHODS: template_custom_helper_success FOR TESTING.
+    METHODS: template_load_template_fail FOR TESTING.
 
 ENDCLASS.
 
@@ -135,5 +136,13 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
       exp = 'Hello Peter Hello Helene'
       act = ls_template_result-text
     ).
+  ENDMETHOD.
+
+
+  METHOD template_load_template_fail.
+    DATA(ls_compile_result) = zcl_handlebars_abap=>compile( 'template_name' ).
+    DATA(ls_template_result) = ls_compile_result-instance->template( ).
+
+    cl_abap_unit_assert=>assert_equals( exp = 'template_name' act = ls_template_result-text ).
   ENDMETHOD.
 ENDCLASS.
