@@ -17,11 +17,9 @@ TYPES: BEGIN OF ts_person,
 
 " Compile the Handlebars template.
 DATA(ls_compile_result) = zcl_handlebars_abap=>compile(
-  '{{#with this.title as |title|}}' &
-    '{{#if title.front}}' &
-      '{{title.front}} ' &
-    '{{/if}}' &
-  '{{/with}}' &
+  '{{#if title.front}}' &
+    '{{title.front}} ' &
+  '{{/if}}' &
 
   '{{firstName}} {{lastName}}'
 ).
