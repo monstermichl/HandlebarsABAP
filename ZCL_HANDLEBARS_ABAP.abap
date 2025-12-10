@@ -119,7 +119,7 @@ CLASS zcl_handlebars_abap DEFINITION
     "! @parameter it_data | Data that shall be available within the block. The first entry is considered as 'this'.
     METHODS fn
       IMPORTING
-        it_data          TYPE tt_data OPTIONAL
+        ia_data          TYPE any OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
@@ -128,7 +128,7 @@ CLASS zcl_handlebars_abap DEFINITION
     "! @parameter it_data | Data that shall be available within the block. The first entry is considered as 'this'.
     METHODS inverse
       IMPORTING
-        it_data          TYPE tt_data OPTIONAL
+        ia_data          TYPE any OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
@@ -581,7 +581,7 @@ CLASS zcl_handlebars_abap DEFINITION
     METHODS backend_eval_block_helper
       IMPORTING
         iv_property      TYPE string
-        it_data          TYPE tt_data OPTIONAL
+        ia_data          TYPE any OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
@@ -768,12 +768,12 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD fn.
-    rs_result = me->backend_eval_block_helper( iv_property = 'body' it_data = it_data ).
+    rs_result = me->backend_eval_block_helper( iv_property = 'body' ia_data = ia_data ).
   ENDMETHOD.
 
 
   METHOD inverse.
-    rs_result = me->backend_eval_block_helper( iv_property = 'else' it_data = it_data ).
+    rs_result = me->backend_eval_block_helper( iv_property = 'else' ia_data = ia_data ).
   ENDMETHOD.
 
 
@@ -2053,8 +2053,30 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       CLEAR lr_block->args.
       DATA(lv_index) = 1.
 
+      " Convert ia_data to tt_data, if required.
+      DATA lt_data TYPE tt_data.
+      DATA(lr_generic_data) = me->any_to_ref_to_data( ia_data ).
+      DATA(ls_type) = me->get_data_type( lr_generic_data ).
+
+      CASE ls_type-name.
+        WHEN 'ts_data'.
+          DATA lr_single_data TYPE REF TO ts_data.
+          lr_single_data ?= lr_generic_data.
+
+          lt_data = VALUE #( ( lr_single_data->* ) ).
+
+        WHEN 'tt_data'.
+          DATA lr_table_data TYPE REF TO tt_data.
+          lr_table_data ?= lr_generic_data.
+
+          lt_data = lr_table_data->*.
+
+        WHEN OTHERS.
+          DATA(lv_kind) = me->backend_get_data_kind( ia_data ).
+      ENDCASE.
+
       " Fill block parameters with values.
-      LOOP AT it_data INTO DATA(ls_data).
+      LOOP AT lt_data INTO DATA(ls_data).
         READ TABLE lr_parser_block->params INTO DATA(ls_parser_block_param) INDEX lv_index.
 
         " If no parameter could be read for the current index, no more
@@ -2067,7 +2089,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         lv_index = lv_index + 1.
       ENDLOOP.
 
-      ls_data = VALUE #( it_data[ 1 ] OPTIONAL ).
+      ls_data = VALUE #( lt_data[ 1 ] OPTIONAL ).
 
       rs_result = me->backend_eval_body(
         ir_block = ls_body
@@ -2103,9 +2125,9 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     IF lv_condition_is_true = abap_true.
-      rs_result = me->fn( VALUE #( ( is_data ) ) ).
+      rs_result = me->fn( is_data ).
     ELSE.
-      rs_result = me->inverse( VALUE #( ( is_data ) ) ).
+      rs_result = me->inverse( is_data ).
     ENDIF.
   ENDMETHOD.
 
@@ -2158,7 +2180,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
                 this = lr_key
               ).
 
-              ls_result = me->fn( VALUE #( ( ls_data ) ( ls_key ) ) ).
+              ls_result = me->fn( VALUE tt_data( ( ls_data ) ( ls_key ) ) ).
 
               lv_error = ls_result-error.
 
@@ -2198,7 +2220,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
               this = lr_index
             ).
 
-            ls_result = me->fn( VALUE #( ( ls_data ) ( ls_index ) ) ).
+            ls_result = me->fn( VALUE tt_data( ( ls_data ) ( ls_index ) ) ).
             lv_error = ls_result-error.
 
             IF lv_error IS NOT INITIAL.
@@ -2217,7 +2239,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
       rs_result-text = lv_text.
     ELSE.
-      rs_result = me->inverse( VALUE #( ( is_data ) ) ).
+      rs_result = me->inverse( is_data ).
     ENDIF.
   ENDMETHOD.
 
@@ -2240,9 +2262,9 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     IF ls_truthy_result-truthy = abap_true.
-      rs_result = me->fn( VALUE #( ( lr_data ) ) ).
+      rs_result = me->fn( lr_data ).
     ELSE.
-      rs_result = me->inverse( VALUE #( ( lr_data ) ) ).
+      rs_result = me->inverse( lr_data ).
     ENDIF.
   ENDMETHOD.
 
