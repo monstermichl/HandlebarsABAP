@@ -34,6 +34,7 @@ CLASS ltcl_handlebars_abap DEFINITION FOR TESTING
     METHODS: template_structure_success FOR TESTING.
     METHODS: template_table_success FOR TESTING.
     METHODS: template_custom_helper_success FOR TESTING.
+    METHODS: template_else_on_undef_success FOR TESTING.
     METHODS: template_load_template_fail FOR TESTING.
 
 ENDCLASS.
@@ -135,6 +136,26 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       exp = 'Hello Peter Hello Helene'
       act = ls_template_result-text
+    ).
+  ENDMETHOD.
+
+
+  METHOD template_else_on_undef_success.
+    CONSTANTS c_success TYPE string VALUE 'success'.
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = c_success
+      act = zcl_handlebars_abap=>compile( '{{#if firstName}}{{else}}' && c_success && '{{/if}}' )-instance->template( )-text
+    ).
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = c_success
+      act = zcl_handlebars_abap=>compile( '{{#if person.firstName}}{{else}}' && c_success && '{{/if}}' )-instance->template( )-text
+    ).
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = c_success
+      act = zcl_handlebars_abap=>compile( '{{#if ../firstName}}{{else}}' && c_success && '{{/if}}' )-instance->template( )-text
     ).
   ENDMETHOD.
 
