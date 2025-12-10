@@ -1,4 +1,4 @@
-" HandlebarsABAP 0.1.1
+" HandlebarsABAP 0.1.2
 CLASS zcl_handlebars_abap DEFINITION
   PUBLIC
   FINAL
@@ -2292,6 +2292,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DATA(lt_parts) = ir_path->parts.
     DATA(lv_relative_path_found) = abap_false.
     DATA(lv_index) = 1.
+    DATA(lv_undefined) = abap_false.
 
     " Go back the amount of relative steps.
     WHILE lv_index < lines( lt_parts ).
@@ -2299,46 +2300,40 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         TRY.
             lr_parent ?= lr_data->parent.
           CATCH cx_root.
-            rs_result-error = me->backend_build_error( iv_error = c_parent_no_ts_data_struct is_token = ls_token ).
-            RETURN.
+            lv_undefined = abap_true.
+            EXIT.
         ENDTRY.
 
         DELETE lt_parts INDEX 1.
 
         IF lr_parent IS NOT BOUND.
-          rs_result-error = me->backend_build_error( iv_error = 'No parent found' is_token = ls_token ).
-          RETURN.
+          lv_undefined = abap_true.
+          EXIT.
         ENDIF.
 
         lr_data = lr_parent.
-
-        IF sy-subrc <> 0.
-          rs_result-error = me->backend_build_error( iv_error = 'Parent has the wrong type' is_token = ls_token ).
-          RETURN.
-        ENDIF.
-
         lv_relative_path_found = abap_true.
       ELSE.
         lv_index = lv_index + 1.
       ENDIF.
     ENDWHILE.
 
-    " Do actual evaluation of lt_parts lines here because there might have been removed some in the previous step.
-    DATA(lv_lines) = lines( lt_parts ).
+    IF lv_undefined = abap_false.
+      " Do actual evaluation of lt_parts lines here because there might have been removed some in the previous step.
+      DATA(lv_lines) = lines( lt_parts ).
 
-    IF lv_lines = 0.
-      rs_result-error = me->backend_build_error( iv_error = 'Path contains no parts' is_token = ls_token ).
-      RETURN.
+      IF lv_lines = 0.
+        rs_result-error = me->backend_build_error( iv_error = 'Path contains no parts' is_token = ls_token ).
+        RETURN.
+      ENDIF.
     ENDIF.
 
     lv_index = 1.
 
-    DATA: lt_path_parts TYPE string_table,
-          lv_kind       TYPE e_backend_data_kinds.
-
+    DATA lv_kind TYPE e_backend_data_kinds.
     DATA(lv_property_found) = abap_false.
 
-    WHILE lv_index <= lv_lines.
+    WHILE lv_undefined = abap_false AND lv_index <= lv_lines.
       DATA(lv_part) = lt_parts[ lv_index ].
       DATA(lv_skip) = abap_false.
 
@@ -2374,8 +2369,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
                 ASSIGN COMPONENT 'value' OF STRUCTURE lr_data->this->* TO FIELD-SYMBOL(<value>).
 
                 IF sy-subrc <> 0.
-                  rs_result-error = me->backend_build_error( iv_error = 'Literal has no value property' is_token = ls_arg-param-token ).
-                  RETURN.
+                  lv_undefined = abap_true.
+                  EXIT.
                 ENDIF.
 
                 GET REFERENCE OF <value> INTO DATA(lr_value).
@@ -2396,7 +2391,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
-      DATA lv_error TYPE string.
+      " If undefined has been discovered, exit loop.
+      IF lv_undefined <> abap_false.
+        EXIT.
+      ENDIF.
 
       " Use a do-loop to be able to go upwards in the structure tree to look for a property.
       DO.
@@ -2414,10 +2412,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
                 iv_name = lv_part
                 is_data = is_data
               ).
-              lv_error = rs_helper_result-error.
+              DATA(lv_error) = rs_helper_result-error.
 
               IF lv_error IS NOT INITIAL.
-                rs_result-error = lv_error.
+                rs_helper_result-error = lv_error.
                 RETURN.
               ENDIF.
 
@@ -2428,8 +2426,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
             ENDIF.
           ENDIF.
 
-          rs_result-error = me->backend_build_error( iv_error = |Field { lv_part } doesn't exist| is_token = ls_token ).
-          RETURN.
+          lv_undefined = abap_true.
+          EXIT.
         ENDIF.
 
         " Skip if the first path part was either "this" or a block-parameter name.
@@ -2442,8 +2440,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
             " If it's not the last part of the evaluation, exit with error. Otherwise, the property is just undefined.
             IF lv_index < lv_lines.
-              rs_result-error = me->backend_build_error( iv_error = |{ lv_part } cannot be evaluated on undefined| is_token = ls_token ).
-              RETURN.
+              lv_undefined = abap_true.
+              EXIT.
             ELSE.
               EXIT.
             ENDIF.
@@ -2458,7 +2456,6 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
                 lv_property_found = abap_true.
 
                 GET REFERENCE OF <field> INTO lr_this.
-                APPEND lv_part TO lt_path_parts.
 
                 lr_parent = NEW ts_data( ). " Make sure parent is on the heap.
                 lr_parent->* = lr_data->*.
@@ -2476,8 +2473,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
               TRY.
                   lr_data ?= lr_data->parent.
                 CATCH cx_root.
-                  rs_result-error = me->backend_build_error( iv_error = c_parent_no_ts_data_struct is_token = ls_token ).
-                  RETURN.
+                  lv_undefined = abap_true.
+                  EXIT.
               ENDTRY.
             ELSE.
               FREE lr_data.
@@ -2491,10 +2488,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       lv_index = lv_index + 1.
     ENDWHILE.
 
-    " If the last found property was undefined, create an undefined ts_data.
-    IF lv_kind = e_backend_data_kind_undefined.
+    " If the last found property is undefined, create an undefined ts_data.
+    IF lv_undefined = abap_true OR lv_kind = e_backend_data_kind_undefined.
       lr_data = NEW ts_data(
-        this   = NEW ts_parser_undefined_literal( )
+        this   = NEW string( )
         parent = lr_parent
       ).
     ENDIF.
