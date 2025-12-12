@@ -113,7 +113,7 @@ CLASS zcl_handlebars_abap DEFINITION
 
     "! Renders the current block's content.
     "!
-    "! @parameter it_data | Data that shall be available within the block. The first entry is considered as 'this'.
+    "! @parameter ia_data | Data that shall be available within the block. The first entry is considered as 'this'.
     METHODS fn
       IMPORTING
         ia_data          TYPE any OPTIONAL
@@ -122,7 +122,7 @@ CLASS zcl_handlebars_abap DEFINITION
 
     "! Renders the current block's else-content.
     "!
-    "! @parameter it_data | Data that shall be available within the block. The first entry is considered as 'this'.
+    "! @parameter ia_data | Data that shall be available within the block. The first entry is considered as 'this'.
     METHODS inverse
       IMPORTING
         ia_data          TYPE any OPTIONAL
