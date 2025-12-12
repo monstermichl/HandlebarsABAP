@@ -1,4 +1,4 @@
-" HandlebarsABAP {{version}} (https://github.com/monstermichl/HandlebarsABAP)
+" HandlebarsABAP {{version}} - https://github.com/monstermichl/HandlebarsABAP
 CLASS zcl_handlebars_abap DEFINITION
   PUBLIC
   FINAL
