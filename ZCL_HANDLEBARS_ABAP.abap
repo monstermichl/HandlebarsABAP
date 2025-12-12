@@ -69,7 +69,7 @@ CLASS zcl_handlebars_abap DEFINITION
     "!     io_instance      TYPE zcl_handlebars_abap
     "!     iv_name          TYPE string
     "!     it_args          TYPE tt_data
-    "!     is_data          TYPE REF TO data
+    "!     ir_data          TYPE tr_data
     "!   RETURNING
     "!     VALUE(rs_result) TYPE ts_text_result.
     "!
@@ -89,7 +89,7 @@ CLASS zcl_handlebars_abap DEFINITION
     "!     io_instance      TYPE zcl_handlebars_abap
     "!     iv_name          TYPE string
     "!     it_args          TYPE tt_data
-    "!     is_data          TYPE REF TO data
+    "!     ir_data          TYPE tr_data
     "!   RETURNING
     "!     VALUE(rs_result) TYPE ts_text_result.
     "!
@@ -537,42 +537,42 @@ CLASS zcl_handlebars_abap DEFINITION
     METHODS backend_eval_body
       IMPORTING
         ir_block         TYPE ts_parser_body
-        is_data          TYPE REF TO data OPTIONAL
+        ir_data          TYPE tr_data OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
     METHODS backend_eval_stmt
       IMPORTING
         ir_stmt          TYPE REF TO data
-        is_data          TYPE REF TO data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
     METHODS backend_eval_expr
       IMPORTING
         ir_stmt          TYPE REF TO data
-        is_data          TYPE REF TO data OPTIONAL
+        ir_data          TYPE tr_data OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_backend_eval_expr_result.
 
     METHODS backend_eval_literal_expr
       IMPORTING
         ir_stmt          TYPE REF TO data
-        is_data          TYPE REF TO data OPTIONAL
+        ir_data          TYPE tr_data OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_backend_eval_expr_result.
 
     METHODS backend_eval_helper
       IMPORTING
         ir_helper        TYPE REF TO data
-        is_data          TYPE REF TO data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
     METHODS backend_eval_block
       IMPORTING
         ir_block         TYPE REF TO ts_parser_block
-        is_data          TYPE REF TO data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
@@ -588,7 +588,7 @@ CLASS zcl_handlebars_abap DEFINITION
         io_instance      TYPE REF TO zcl_handlebars_abap
         iv_name          TYPE string
         it_args          TYPE tt_data
-        is_data          TYPE REF TO data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
@@ -597,7 +597,7 @@ CLASS zcl_handlebars_abap DEFINITION
         io_instance      TYPE REF TO zcl_handlebars_abap
         iv_name          TYPE string
         it_args          TYPE tt_data
-        is_data          TYPE REF TO data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
@@ -606,14 +606,14 @@ CLASS zcl_handlebars_abap DEFINITION
         io_instance      TYPE REF TO zcl_handlebars_abap
         iv_name          TYPE string
         it_args          TYPE tt_data
-        is_data          TYPE REF TO data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
     METHODS backend_eval_inline_helper
       IMPORTING
         ir_inline_helper TYPE REF TO ts_parser_inline_helper
-        is_data          TYPE REF TO data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
@@ -622,21 +622,21 @@ CLASS zcl_handlebars_abap DEFINITION
         io_instance      TYPE REF TO zcl_handlebars_abap
         iv_name          TYPE string
         it_args          TYPE tt_data
-        is_data          TYPE REF TO data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
     METHODS backend_eval_sub_expr
       IMPORTING
         ir_sub_expr      TYPE REF TO ts_parser_sub_expr
-        is_data          TYPE REF TO data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_backend_path_eval_result.
 
     METHODS backend_eval_path
       IMPORTING
         ir_path          TYPE REF TO ts_parser_path
-        is_data          TYPE REF TO data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_backend_path_eval_result.
 
@@ -660,7 +660,7 @@ CLASS zcl_handlebars_abap DEFINITION
       IMPORTING
         iv_name          TYPE string
         it_args          TYPE tt_data OPTIONAL
-        is_data          TYPE REF TO data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
@@ -752,7 +752,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     DATA(ls_result) = me->backend_eval_stmt(
       ir_stmt = me->mr_template
-      is_data = lr_data
+      ir_data = lr_data
     ).
     DATA(lv_error) = ls_result-error.
 
@@ -1774,7 +1774,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     LOOP AT ir_block-statements INTO DATA(lr_stmt).
       DATA(ls_result) = me->backend_eval_stmt(
         ir_stmt = lr_stmt
-        is_data = is_data
+        ir_data = ir_data
       ).
       DATA(lv_error) = ls_result-error.
 
@@ -1801,7 +1801,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
         rs_result = me->backend_eval_body(
           ir_block = lr_template->body
-          is_data  = is_data
+          ir_data  = ir_data
         ).
 
       WHEN 'ts_parser_text'.
@@ -1816,13 +1816,13 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
         rs_result = me->backend_eval_block(
           ir_block = lr_conditional_block
-          is_data  = is_data
+          ir_data  = ir_data
         ).
 
       WHEN OTHERS.
         DATA(ls_eval_expr_result) = me->backend_eval_expr(
           ir_stmt = ir_stmt
-          is_data = is_data
+          ir_data = ir_data
         ).
         DATA(lv_error) = ls_eval_expr_result-error.
         DATA(lv_kind) = ls_eval_expr_result-kind.
@@ -1849,7 +1849,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   METHOD backend_eval_expr.
 
     " First, try to evaluate if it's a literal.
-    DATA(ls_literal_result) = me->backend_eval_literal_expr( ir_stmt = ir_stmt is_data = is_data ).
+    DATA(ls_literal_result) = me->backend_eval_literal_expr( ir_stmt = ir_stmt ir_data = ir_data ).
 
     " If no error occurred, it's a literal which can be returned immediately.
     IF ls_literal_result-error IS INITIAL.
@@ -1871,7 +1871,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
         DATA(ls_sub_expr_result) = me->backend_eval_sub_expr(
           ir_sub_expr = lr_sub_expr
-          is_data     = is_data
+          ir_data     = ir_data
         ).
         lv_error = ls_sub_expr_result-error.
 
@@ -1888,7 +1888,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
         DATA(ls_inline_helper_result) = me->backend_eval_inline_helper(
           ir_inline_helper = lr_inline_helper
-          is_data          = is_data
+          ir_data          = ir_data
         ).
         lv_error = ls_inline_helper_result-error.
 
@@ -1905,7 +1905,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
         DATA(ls_path_result) = me->backend_eval_path(
           ir_path = lr_path
-          is_data = is_data
+          ir_data = ir_data
         ).
         lv_error = ls_path_result-error.
 
@@ -1977,7 +1977,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     LOOP AT lr_helper->args INTO DATA(ls_arg).
       DATA(ls_result) = me->backend_eval_expr(
         ir_stmt = ls_arg
-        is_data = is_data
+        ir_data = ir_data
       ).
       lv_error = ls_result-error.
 
@@ -2011,7 +2011,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     rs_result = me->backend_call_helper(
       iv_name = lr_helper->name
       it_args = lt_args
-      is_data = is_data
+      ir_data = ir_data
     ).
 
     " Pop last entry from block stack.
@@ -2026,7 +2026,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   METHOD backend_eval_block.
     rs_result = me->backend_eval_helper(
       ir_helper = ir_block
-      is_data   = is_data
+      ir_data   = ir_data
     ).
   ENDMETHOD.
 
@@ -2082,7 +2082,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
       rs_result = me->backend_eval_body(
         ir_block = ls_body
-        is_data  = ls_data
+        ir_data  = ls_data
       ).
     ENDIF.
   ENDMETHOD.
@@ -2114,9 +2114,9 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     IF lv_condition_is_true = abap_true.
-      rs_result = me->fn( is_data ).
+      rs_result = me->fn( ir_data ).
     ELSE.
-      rs_result = me->inverse( is_data ).
+      rs_result = me->inverse( ir_data ).
     ENDIF.
   ENDMETHOD.
 
@@ -2212,7 +2212,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
       rs_result-text = lv_text.
     ELSE.
-      rs_result = me->inverse( is_data ).
+      rs_result = me->inverse( ir_data ).
     ENDIF.
   ENDMETHOD.
 
@@ -2245,7 +2245,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   METHOD backend_eval_inline_helper.
     rs_result = me->backend_eval_helper(
       ir_helper = ir_inline_helper
-      is_data   = is_data
+      ir_data   = ir_data
     ).
   ENDMETHOD.
 
@@ -2270,7 +2270,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   METHOD backend_eval_sub_expr.
     rs_result = me->backend_eval_expr(
       ir_stmt = ir_sub_expr->expr
-      is_data = is_data
+      ir_data = ir_data
     ).
   ENDMETHOD.
 
@@ -2316,7 +2316,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     " If no data has been found, reset block index.
     IF lr_this IS NOT BOUND.
       lv_block_index = lv_original_block_index.
-      lr_this = is_data.
+      lr_this = ir_data.
     ELSE.
       lv_original_block_index = lv_block_index.
     ENDIF.
@@ -2460,7 +2460,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         IF ls_find_helper_result-error IS INITIAL.
           DATA(rs_helper_result) = me->backend_call_helper(
             iv_name = lv_part
-            is_data = is_data
+            ir_data = ir_data
           ).
           DATA(lv_error) = rs_helper_result-error.
 
@@ -2572,11 +2572,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
         CASE lv_type_name.
           WHEN 'ts_class_helper'.
-            DATA ls_class_helper_config TYPE REF TO ts_class_helper.
-            ls_class_helper_config ?= lr_helper.
+            DATA lr_class_helper_config TYPE REF TO ts_class_helper.
+            lr_class_helper_config ?= lr_helper.
 
-            DATA(lv_class_name) = ls_class_helper_config->class_name.
-            DATA(lv_class_method_name) = ls_class_helper_config->method_name.
+            DATA(lv_class_name) = lr_class_helper_config->class_name.
+            DATA(lv_class_method_name) = lr_class_helper_config->method_name.
 
             TRANSLATE lv_class_name TO UPPER CASE.
             TRANSLATE lv_class_method_name TO UPPER CASE.
@@ -2586,62 +2586,62 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
                 io_instance = me
                 iv_name     = iv_name
                 it_args     = it_args
-                is_data     = is_data
+                ir_data     = ir_data
               RECEIVING
                 rs_result   = rs_result.
 
           WHEN 'ts_object_helper'.
-            DATA ls_object_helper_config TYPE REF TO ts_object_helper.
-            ls_object_helper_config ?= lr_helper.
+            DATA lr_object_helper_config TYPE REF TO ts_object_helper.
+            lr_object_helper_config ?= lr_helper.
 
-            DATA(lv_object_method_name) = ls_object_helper_config->method_name.
+            DATA(lv_object_method_name) = lr_object_helper_config->method_name.
             TRANSLATE lv_object_method_name TO UPPER CASE.
 
-            CALL METHOD ls_object_helper_config->object->(lv_object_method_name)
+            CALL METHOD lr_object_helper_config->object->(lv_object_method_name)
               EXPORTING
                 io_instance = me
                 iv_name     = iv_name
                 it_args     = it_args
-                is_data     = is_data
+                ir_data     = ir_data
               RECEIVING
                 rs_result   = rs_result.
 
           WHEN 'ts_func_module_helper'.
-            DATA ls_func_module_helper_config TYPE REF TO ts_func_module_helper.
-            ls_func_module_helper_config ?= lr_helper.
+            DATA lr_func_module_helper_config TYPE REF TO ts_func_module_helper.
+            lr_func_module_helper_config ?= lr_helper.
 
-            DATA(lv_function_name) = ls_func_module_helper_config->function_name.
+            DATA(lv_function_name) = lr_func_module_helper_config->function_name.
             TRANSLATE lv_function_name TO UPPER CASE.
 
-            CALL FUNCTION ls_func_module_helper_config->function_name
+            CALL FUNCTION lr_func_module_helper_config->function_name
               EXPORTING
                 io_instance = me
                 iv_name     = iv_name
                 it_args     = it_args
-                is_data     = is_data
+                ir_data     = ir_data
               IMPORTING
                 es_result   = rs_result.
 
           WHEN 'ts_form_helper'.
-            DATA ls_form_helper_config TYPE REF TO ts_form_helper.
-            ls_form_helper_config ?= lr_helper.
+            DATA lr_form_helper_config TYPE REF TO ts_form_helper.
+            lr_form_helper_config ?= lr_helper.
 
-            DATA(lv_form_name) = ls_form_helper_config->form_name.
-            DATA(lv_report_name) = ls_form_helper_config->report_name.
+            DATA(lv_form_name) = lr_form_helper_config->form_name.
+            DATA(lv_report_name) = lr_form_helper_config->report_name.
 
             TRANSLATE lv_form_name TO UPPER CASE.
             TRANSLATE lv_report_name TO UPPER CASE.
 
             DATA(lv_name) = iv_name.
             DATA(lt_args) = it_args.
-            DATA(ls_data) = is_data.
+            DATA(lr_data) = ir_data.
 
             PERFORM (lv_form_name) IN PROGRAM (lv_report_name)
               USING
                 me
                 lv_name
                 lt_args
-                ls_data
+                lr_data
               CHANGING
                 rs_result.
 
