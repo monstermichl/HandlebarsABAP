@@ -1,0 +1,28 @@
+name: HandlebarsABAP release
+
+on:
+  release:
+    types:
+      - created
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Create release file
+    if: ${{ github.event_name == 'release' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version
+        shell: bash
+        run: |
+          sed -i 's/{{version}}/${{ github.event.release.tag_name }}/g' ZCL_HANDLEBARS_ABAP.abap
+
+      - name: Upload
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} ZCL_HANDLEBARS_ABAP.abap
+        env:
+            GH_TOKEN: ${{ github.TOKEN }}

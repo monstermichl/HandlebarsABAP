@@ -1,4 +1,4 @@
-" HandlebarsABAP 0.1.1
+" HandlebarsABAP {{version}} (https://github.com/monstermichl/HandlebarsABAP)
 CLASS zcl_handlebars_abap DEFINITION
   PUBLIC
   FINAL
@@ -19,11 +19,6 @@ CLASS zcl_handlebars_abap DEFINITION
              text  TYPE string,
              error TYPE string,
            END OF ts_text_result.
-
-    TYPES: BEGIN OF ts_data,
-             this   TYPE REF TO data,
-             parent TYPE REF TO data, " ts_data
-           END OF ts_data.
 
     TYPES: BEGIN OF ts_class_helper,
              class_name  TYPE string,
@@ -54,7 +49,9 @@ CLASS zcl_handlebars_abap DEFINITION
              error  TYPE string,
            END OF ts_is_truthy_result.
 
-    TYPES: tt_data TYPE STANDARD TABLE OF ts_data WITH DEFAULT KEY.
+    TYPES: tr_data TYPE REF TO data.
+
+    TYPES: tt_data TYPE STANDARD TABLE OF REF TO data WITH DEFAULT KEY.
 
     "! Compiles the passed Handlebars template.
     "!
@@ -72,7 +69,7 @@ CLASS zcl_handlebars_abap DEFINITION
     "!     io_instance      TYPE zcl_handlebars_abap
     "!     iv_name          TYPE string
     "!     it_args          TYPE tt_data
-    "!     is_data          TYPE ts_data
+    "!     ir_data          TYPE tr_data
     "!   RETURNING
     "!     VALUE(rs_result) TYPE ts_text_result.
     "!
@@ -92,7 +89,7 @@ CLASS zcl_handlebars_abap DEFINITION
     "!     io_instance      TYPE zcl_handlebars_abap
     "!     iv_name          TYPE string
     "!     it_args          TYPE tt_data
-    "!     is_data          TYPE ts_data
+    "!     ir_data          TYPE tr_data
     "!   RETURNING
     "!     VALUE(rs_result) TYPE ts_text_result.
     "!
@@ -116,19 +113,19 @@ CLASS zcl_handlebars_abap DEFINITION
 
     "! Renders the current block's content.
     "!
-    "! @parameter it_data | Data that shall be available within the block. The first entry is considered as 'this'.
+    "! @parameter ia_data | Data that shall be available within the block. The first entry is considered as 'this'.
     METHODS fn
       IMPORTING
-        it_data          TYPE tt_data OPTIONAL
+        ia_data          TYPE any OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
     "! Renders the current block's else-content.
     "!
-    "! @parameter it_data | Data that shall be available within the block. The first entry is considered as 'this'.
+    "! @parameter ia_data | Data that shall be available within the block. The first entry is considered as 'this'.
     METHODS inverse
       IMPORTING
-        it_data          TYPE tt_data OPTIONAL
+        ia_data          TYPE any OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
@@ -488,26 +485,26 @@ CLASS zcl_handlebars_abap DEFINITION
 
     TYPES: BEGIN OF ts_backend_block_param,
              name TYPE string,
-             data TYPE ts_data,
+             data TYPE REF TO data,
            END OF ts_backend_block_param.
 
     TYPES: tt_backend_block_params TYPE TABLE OF ts_backend_block_param.
 
     TYPES: BEGIN OF ts_backend_eval_expr_result,
-             data  TYPE ts_data,
+             data  TYPE REF TO data,
              kind  TYPE e_backend_data_kinds,
              error TYPE string,
            END OF ts_backend_eval_expr_result.
 
     TYPES: BEGIN OF ts_backend_path_eval_result,
-             data  TYPE ts_data,
+             data  TYPE REF TO data,
              kind  TYPE e_backend_data_kinds,
              error TYPE string,
            END OF ts_backend_path_eval_result.
 
     TYPES: BEGIN OF ts_backend_block_arg,
              param TYPE ts_parser_block_param,
-             data  TYPE ts_data,
+             data  TYPE REF TO data,
            END OF ts_backend_block_arg.
 
     TYPES: tt_backend_block_args TYPE STANDARD TABLE OF ts_backend_block_arg WITH DEFAULT KEY.
@@ -519,7 +516,8 @@ CLASS zcl_handlebars_abap DEFINITION
 
     TYPES: tt_backend_block_stack TYPE TABLE OF ts_backend_block_stack_block.
 
-    DATA: mt_backend_block_stack   TYPE tt_backend_block_stack,
+    DATA: mr_root_data             TYPE REF TO data,
+          mt_backend_block_stack   TYPE tt_backend_block_stack,
           mv_backend_inline_helper TYPE ts_parser_inline_helper.
 
     METHODS backend_build_error
@@ -539,49 +537,49 @@ CLASS zcl_handlebars_abap DEFINITION
     METHODS backend_eval_body
       IMPORTING
         ir_block         TYPE ts_parser_body
-        is_data          TYPE ts_data OPTIONAL
+        ir_data          TYPE tr_data OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
     METHODS backend_eval_stmt
       IMPORTING
         ir_stmt          TYPE REF TO data
-        is_data          TYPE ts_data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
     METHODS backend_eval_expr
       IMPORTING
         ir_stmt          TYPE REF TO data
-        is_data          TYPE ts_data OPTIONAL
+        ir_data          TYPE tr_data OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_backend_eval_expr_result.
 
     METHODS backend_eval_literal_expr
       IMPORTING
         ir_stmt          TYPE REF TO data
-        is_data          TYPE ts_data OPTIONAL
+        ir_data          TYPE tr_data OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_backend_eval_expr_result.
 
     METHODS backend_eval_helper
       IMPORTING
         ir_helper        TYPE REF TO data
-        is_data          TYPE ts_data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
     METHODS backend_eval_block
       IMPORTING
         ir_block         TYPE REF TO ts_parser_block
-        is_data          TYPE ts_data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
     METHODS backend_eval_block_helper
       IMPORTING
         iv_property      TYPE string
-        it_data          TYPE tt_data OPTIONAL
+        ia_data          TYPE any OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
@@ -590,7 +588,7 @@ CLASS zcl_handlebars_abap DEFINITION
         io_instance      TYPE REF TO zcl_handlebars_abap
         iv_name          TYPE string
         it_args          TYPE tt_data
-        is_data          TYPE ts_data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
@@ -599,7 +597,7 @@ CLASS zcl_handlebars_abap DEFINITION
         io_instance      TYPE REF TO zcl_handlebars_abap
         iv_name          TYPE string
         it_args          TYPE tt_data
-        is_data          TYPE ts_data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
@@ -608,14 +606,14 @@ CLASS zcl_handlebars_abap DEFINITION
         io_instance      TYPE REF TO zcl_handlebars_abap
         iv_name          TYPE string
         it_args          TYPE tt_data
-        is_data          TYPE ts_data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
     METHODS backend_eval_inline_helper
       IMPORTING
         ir_inline_helper TYPE REF TO ts_parser_inline_helper
-        is_data          TYPE ts_data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
@@ -624,21 +622,21 @@ CLASS zcl_handlebars_abap DEFINITION
         io_instance      TYPE REF TO zcl_handlebars_abap
         iv_name          TYPE string
         it_args          TYPE tt_data
-        is_data          TYPE ts_data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
     METHODS backend_eval_sub_expr
       IMPORTING
         ir_sub_expr      TYPE REF TO ts_parser_sub_expr
-        is_data          TYPE ts_data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_backend_path_eval_result.
 
     METHODS backend_eval_path
       IMPORTING
         ir_path          TYPE REF TO ts_parser_path
-        is_data          TYPE ts_data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_backend_path_eval_result.
 
@@ -662,7 +660,7 @@ CLASS zcl_handlebars_abap DEFINITION
       IMPORTING
         iv_name          TYPE string
         it_args          TYPE tt_data OPTIONAL
-        is_data          TYPE ts_data
+        ir_data          TYPE tr_data
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
@@ -750,11 +748,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   METHOD template.
     DATA(lr_data) = me->any_to_ref_to_data( ia_data ).
 
+    me->mr_root_data = lr_data.
+
     DATA(ls_result) = me->backend_eval_stmt(
       ir_stmt = me->mr_template
-      is_data = VALUE ts_data(
-        this = lr_data
-      )
+      ir_data = lr_data
     ).
     DATA(lv_error) = ls_result-error.
 
@@ -768,12 +766,12 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD fn.
-    rs_result = me->backend_eval_block_helper( iv_property = 'body' it_data = it_data ).
+    rs_result = me->backend_eval_block_helper( iv_property = 'body' ia_data = ia_data ).
   ENDMETHOD.
 
 
   METHOD inverse.
-    rs_result = me->backend_eval_block_helper( iv_property = 'else' it_data = it_data ).
+    rs_result = me->backend_eval_block_helper( iv_property = 'else' ia_data = ia_data ).
   ENDMETHOD.
 
 
@@ -1776,7 +1774,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     LOOP AT ir_block-statements INTO DATA(lr_stmt).
       DATA(ls_result) = me->backend_eval_stmt(
         ir_stmt = lr_stmt
-        is_data = is_data
+        ir_data = ir_data
       ).
       DATA(lv_error) = ls_result-error.
 
@@ -1803,7 +1801,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
         rs_result = me->backend_eval_body(
           ir_block = lr_template->body
-          is_data  = is_data
+          ir_data  = ir_data
         ).
 
       WHEN 'ts_parser_text'.
@@ -1818,13 +1816,13 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
         rs_result = me->backend_eval_block(
           ir_block = lr_conditional_block
-          is_data  = is_data
+          ir_data  = ir_data
         ).
 
       WHEN OTHERS.
         DATA(ls_eval_expr_result) = me->backend_eval_expr(
           ir_stmt = ir_stmt
-          is_data = is_data
+          ir_data = ir_data
         ).
         DATA(lv_error) = ls_eval_expr_result-error.
         DATA(lv_kind) = ls_eval_expr_result-kind.
@@ -1838,7 +1836,12 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           RETURN.
         ENDIF.
 
-        rs_result-text = ls_eval_expr_result-data-this->*.
+        " Use string interpolation to convert to string as using
+        " ls_eval_expr_result-data->* directly might result in
+        " unwanted spaces (e.g. for positive number a space is
+        " added at the end, while for negative numbers a "-" is
+        " added at the end...
+        rs_result-text = |{ ls_eval_expr_result-data->* }|.
     ENDCASE.
   ENDMETHOD.
 
@@ -1846,7 +1849,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   METHOD backend_eval_expr.
 
     " First, try to evaluate if it's a literal.
-    DATA(ls_literal_result) = me->backend_eval_literal_expr( ir_stmt = ir_stmt is_data = is_data ).
+    DATA(ls_literal_result) = me->backend_eval_literal_expr( ir_stmt = ir_stmt ir_data = ir_data ).
 
     " If no error occurred, it's a literal which can be returned immediately.
     IF ls_literal_result-error IS INITIAL.
@@ -1855,8 +1858,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     " If it's not a literal, try to evaluate a more complex type.
-    DATA: ls_data  TYPE ts_data,
-          lr_data  TYPE REF TO data,
+    DATA: lr_data  TYPE REF TO data,
           lv_error TYPE string.
 
     DATA(lv_type) = me->get_data_type( ir_stmt ).
@@ -1869,7 +1871,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
         DATA(ls_sub_expr_result) = me->backend_eval_sub_expr(
           ir_sub_expr = lr_sub_expr
-          is_data     = is_data
+          ir_data     = ir_data
         ).
         lv_error = ls_sub_expr_result-error.
 
@@ -1878,7 +1880,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           RETURN.
         ENDIF.
 
-        ls_data = ls_sub_expr_result-data.
+        lr_data = ls_sub_expr_result-data.
 
       WHEN 'ts_parser_inline_helper'.
         DATA lr_inline_helper TYPE REF TO ts_parser_inline_helper.
@@ -1886,7 +1888,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
         DATA(ls_inline_helper_result) = me->backend_eval_inline_helper(
           ir_inline_helper = lr_inline_helper
-          is_data          = is_data
+          ir_data          = ir_data
         ).
         lv_error = ls_inline_helper_result-error.
 
@@ -1895,9 +1897,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           RETURN.
         ENDIF.
 
-        ls_data = VALUE ts_data(
-          this = NEW string( ls_inline_helper_result-text )
-        ).
+        lr_data = NEW string( ls_inline_helper_result-text ).
 
       WHEN 'ts_parser_path'.
         DATA lr_path TYPE REF TO ts_parser_path.
@@ -1905,7 +1905,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
         DATA(ls_path_result) = me->backend_eval_path(
           ir_path = lr_path
-          is_data = is_data
+          ir_data = ir_data
         ).
         lv_error = ls_path_result-error.
 
@@ -1914,7 +1914,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           RETURN.
         ENDIF.
 
-        ls_data = ls_path_result-data.
+        lr_data = ls_path_result-data.
 
       WHEN OTHERS.
         DATA(ls_token) = me->backend_get_token_property( ir_stmt ).
@@ -1923,13 +1923,13 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         RETURN.
     ENDCASE.
 
-    rs_result-data = ls_data.
-    rs_result-kind = me->backend_get_data_kind( ls_data-this ).
+    rs_result-data = lr_data.
+    rs_result-kind = me->backend_get_data_kind( lr_data ).
   ENDMETHOD.
 
 
   METHOD backend_eval_literal_expr.
-    DATA: ls_data TYPE ts_data,
+    DATA: ls_data TYPE REF TO data,
           lr_data TYPE REF TO data.
 
     DATA(lv_type) = me->get_data_type( ir_stmt ).
@@ -1955,10 +1955,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         RETURN.
     ENDCASE.
 
-    rs_result-data = ls_data = VALUE #(
-      this = lr_data
-    ).
-    rs_result-kind = me->backend_get_data_kind( ls_data-this ).
+    rs_result-data = lr_data.
+    rs_result-kind = me->backend_get_data_kind( lr_data ).
   ENDMETHOD.
 
 
@@ -1979,7 +1977,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     LOOP AT lr_helper->args INTO DATA(ls_arg).
       DATA(ls_result) = me->backend_eval_expr(
         ir_stmt = ls_arg
-        is_data = is_data
+        ir_data = ir_data
       ).
       lv_error = ls_result-error.
 
@@ -2013,7 +2011,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     rs_result = me->backend_call_helper(
       iv_name = lr_helper->name
       it_args = lt_args
-      is_data = is_data
+      ir_data = ir_data
     ).
 
     " Pop last entry from block stack.
@@ -2028,7 +2026,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   METHOD backend_eval_block.
     rs_result = me->backend_eval_helper(
       ir_helper = ir_block
-      is_data   = is_data
+      ir_data   = ir_data
     ).
   ENDMETHOD.
 
@@ -2053,8 +2051,21 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       CLEAR lr_block->args.
       DATA(lv_index) = 1.
 
+      " Convert ia_data to tt_data, if required.
+      DATA lt_data TYPE tt_data.
+      DATA(lr_data) = me->any_to_ref_to_data( ia_data ).
+      DATA(ls_type) = me->get_data_type( lr_data ).
+      DATA(lv_is_ref) = ls_type-is_ref.
+      DATA(lv_kind) = me->backend_get_data_kind( lr_data ).
+
+      IF lv_kind <> e_backend_data_kind_table.
+        lt_data = VALUE #( ( lr_data ) ).
+      ELSE.
+        lt_data = lr_data->*.
+      ENDIF.
+
       " Fill block parameters with values.
-      LOOP AT it_data INTO DATA(ls_data).
+      LOOP AT lt_data INTO DATA(ls_data).
         READ TABLE lr_parser_block->params INTO DATA(ls_parser_block_param) INDEX lv_index.
 
         " If no parameter could be read for the current index, no more
@@ -2067,11 +2078,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         lv_index = lv_index + 1.
       ENDLOOP.
 
-      ls_data = VALUE #( it_data[ 1 ] OPTIONAL ).
+      ls_data = VALUE #( lt_data[ 1 ] OPTIONAL ).
 
       rs_result = me->backend_eval_body(
         ir_block = ls_body
-        is_data  = ls_data
+        ir_data  = ls_data
       ).
     ENDIF.
   ENDMETHOD.
@@ -2086,7 +2097,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(lr_condition) = it_args[ 1 ]-this.
+    DATA(lr_condition) = it_args[ 1 ].
     DATA(ls_truthy_result) = me->is_truthy( lr_condition ).
     DATA(lv_error) = ls_truthy_result-error.
 
@@ -2103,9 +2114,9 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     IF lv_condition_is_true = abap_true.
-      rs_result = me->fn( VALUE #( ( is_data ) ) ).
+      rs_result = me->fn( ir_data ).
     ELSE.
-      rs_result = me->inverse( VALUE #( ( is_data ) ) ).
+      rs_result = me->inverse( ir_data ).
     ENDIF.
   ENDMETHOD.
 
@@ -2121,7 +2132,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DATA: ls_result TYPE ts_text_result,
           lv_error  TYPE string.
 
-    DATA(lr_iterable) = it_args[ 1 ]-this.
+    DATA(lr_iterable) = it_args[ 1 ].
     DATA(lv_type) = me->backend_get_data_kind( lr_iterable ).
     DATA(ls_truthy_result) = me->is_truthy( lr_iterable ).
 
@@ -2133,7 +2144,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     IF ls_truthy_result-truthy = abap_true.
-      DATA ls_data TYPE ts_data.
+      DATA ls_data TYPE REF TO data.
       DATA(lv_text) = VALUE string( ).
 
       CASE lv_type.
@@ -2150,16 +2161,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
               GET REFERENCE OF <field> INTO DATA(lr_field).
               GET REFERENCE OF lv_field_name INTO DATA(lr_key).
 
-              ls_data = VALUE ts_data(
-                this   = lr_field
-                parent = lr_iterable
-              ).
-              DATA(ls_key) = VALUE ts_data(
-                this = lr_key
-              ).
-
-              ls_result = me->fn( VALUE #( ( ls_data ) ( ls_key ) ) ).
-
+              ls_result = me->fn( VALUE tt_data( ( lr_field ) ( lr_key ) ) ).
               lv_error = ls_result-error.
 
               IF lv_error IS NOT INITIAL.
@@ -2175,6 +2177,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           FIELD-SYMBOLS: <table> TYPE ANY TABLE.
 
           ASSIGN lr_iterable->* TO <table>.
+
           DATA(lv_index) = 0. " 0 to stay consistent with Handlebars' implementation.
 
           LOOP AT <table> ASSIGNING FIELD-SYMBOL(<row>).
@@ -2190,15 +2193,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
             GET REFERENCE OF lv_index INTO DATA(lr_index).
 
-            ls_data = VALUE ts_data(
-              this   = lr_row
-              parent = lr_iterable
-            ).
-            DATA(ls_index) = VALUE ts_data(
-              this = lr_index
-            ).
-
-            ls_result = me->fn( VALUE #( ( ls_data ) ( ls_index ) ) ).
+            ls_result = me->fn( VALUE tt_data( ( lr_row ) ( lr_index ) ) ).
             lv_error = ls_result-error.
 
             IF lv_error IS NOT INITIAL.
@@ -2217,7 +2212,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
       rs_result-text = lv_text.
     ELSE.
-      rs_result = me->inverse( VALUE #( ( is_data ) ) ).
+      rs_result = me->inverse( ir_data ).
     ENDIF.
   ENDMETHOD.
 
@@ -2231,7 +2226,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     DATA(lr_data) = it_args[ 1 ].
-    DATA(ls_truthy_result) = me->is_truthy( lr_data-this ).
+    DATA(ls_truthy_result) = me->is_truthy( lr_data ).
     DATA(lv_error) = ls_truthy_result-error.
 
     IF lv_error IS NOT INITIAL.
@@ -2240,9 +2235,9 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     IF ls_truthy_result-truthy = abap_true.
-      rs_result = me->fn( VALUE #( ( lr_data ) ) ).
+      rs_result = me->fn( lr_data ).
     ELSE.
-      rs_result = me->inverse( VALUE #( ( lr_data ) ) ).
+      rs_result = me->inverse( lr_data ).
     ENDIF.
   ENDMETHOD.
 
@@ -2250,7 +2245,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   METHOD backend_eval_inline_helper.
     rs_result = me->backend_eval_helper(
       ir_helper = ir_inline_helper
-      is_data   = is_data
+      ir_data   = ir_data
     ).
   ENDMETHOD.
 
@@ -2263,7 +2258,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         lv_log_text = |{ lv_log_text } |.
       ENDIF.
 
-      lv_log_text = |{ lv_log_text }{ ls_arg-this->* }|.
+      lv_log_text = |{ lv_log_text }{ ls_arg->* }|.
     ENDLOOP.
 
     IF lv_log_text <> ' '.
@@ -2275,70 +2270,65 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   METHOD backend_eval_sub_expr.
     rs_result = me->backend_eval_expr(
       ir_stmt = ir_sub_expr->expr
-      is_data = is_data
+      ir_data = ir_data
     ).
   ENDMETHOD.
 
 
   METHOD backend_eval_path.
-    CONSTANTS c_parent_no_ts_data_struct TYPE string VALUE 'Parent is not a ts_data struct'.
-
-    DATA lr_parent TYPE REF TO ts_data.
-    DATA(lr_data) = NEW ts_data( ).
-
-    lr_data->* = is_data.
+    DATA: lr_this        TYPE REF TO data,
+          lr_block       TYPE REF TO ts_backend_block_stack_block,
+          lv_block_index TYPE i.
 
     DATA(ls_token) = ir_path->token.
     DATA(lt_parts) = ir_path->parts.
     DATA(lv_relative_path_found) = abap_false.
+    DATA(lv_undefined) = abap_false.
     DATA(lv_index) = 1.
+    DATA(lv_original_block_index) = lines( me->mt_backend_block_stack ).
 
     " Go back the amount of relative steps.
-    WHILE lv_index < lines( lt_parts ).
-      IF lt_parts[ lv_index ] = c_relative.
-        TRY.
-            lr_parent ?= lr_data->parent.
-          CATCH cx_root.
-            rs_result-error = me->backend_build_error( iv_error = c_parent_no_ts_data_struct is_token = ls_token ).
-            RETURN.
-        ENDTRY.
+    WHILE lv_index <= lines( lt_parts ).
+      IF lt_parts[ 1 ] = c_relative.
+        lv_block_index = lv_original_block_index - lv_index.
+        lr_block = me->backend_get_block( lv_block_index ).
 
         DELETE lt_parts INDEX 1.
 
-        IF lr_parent IS NOT BOUND.
-          rs_result-error = me->backend_build_error( iv_error = 'No parent found' is_token = ls_token ).
-          RETURN.
+        " At worst, resolve to the root.
+        IF lr_block IS NOT BOUND.
+          lr_this = me->mr_root_data.
+          EXIT.
         ENDIF.
 
-        lr_data = lr_parent.
+        DATA(lt_block_args) = lr_block->args.
 
-        IF sy-subrc <> 0.
-          rs_result-error = me->backend_build_error( iv_error = 'Parent has the wrong type' is_token = ls_token ).
-          RETURN.
+        IF lines( lt_block_args ) > 0.
+          lr_this = lt_block_args[ 1 ]-data.
         ENDIF.
 
-        lv_relative_path_found = abap_true.
-      ELSE.
         lv_index = lv_index + 1.
+      ELSE.
+        EXIT.
       ENDIF.
     ENDWHILE.
 
-    " Do actual evaluation of lt_parts lines here because there might have been removed some in the previous step.
-    DATA(lv_lines) = lines( lt_parts ).
-
-    IF lv_lines = 0.
-      rs_result-error = me->backend_build_error( iv_error = 'Path contains no parts' is_token = ls_token ).
-      RETURN.
+    " If no data has been found, reset block index.
+    IF lr_this IS NOT BOUND.
+      lv_block_index = lv_original_block_index.
+      lr_this = ir_data.
+    ELSE.
+      lv_original_block_index = lv_block_index.
     ENDIF.
 
+    DATA(lv_lines) = lines( lt_parts ).
     lv_index = 1.
 
-    DATA: lt_path_parts TYPE string_table,
-          lv_kind       TYPE e_backend_data_kinds.
-
+    DATA lv_kind TYPE e_backend_data_kinds.
+    DATA(lv_only_down) = abap_false.
     DATA(lv_property_found) = abap_false.
 
-    WHILE lv_index <= lv_lines.
+    WHILE lv_undefined = abap_false AND lv_index <= lv_lines.
       DATA(lv_part) = lt_parts[ lv_index ].
       DATA(lv_skip) = abap_false.
 
@@ -2348,14 +2338,14 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         " Check for "this"-keyword.
         IF lv_part = c_this.
           lv_skip = abap_true.
+          lv_only_down = abap_true.
 
           " If no relative path was found, check for block parameter.
         ELSEIF lv_relative_path_found = abap_false.
-          DATA(lv_block_index) = lines( me->mt_backend_block_stack ).
 
           " Use a do-loop to look for a properly named block parameter in the block stack from bottom to top (latest first).
           DO.
-            DATA(lr_block) = backend_get_block( lv_block_index ).
+            lr_block = backend_get_block( lv_block_index ).
 
             IF lr_block IS NOT BOUND.
               EXIT.
@@ -2364,27 +2354,23 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
             DATA(ls_arg) = VALUE #( lr_block->args[ param-name = lv_part ] OPTIONAL ).
 
             IF ls_arg IS NOT INITIAL.
-              GET REFERENCE OF ls_arg-data INTO lr_data.
+              lr_this ?= ls_arg-data.
 
-              " Try to evaluate is found data is a literal.
-              DATA(ls_literal_result) = me->backend_eval_literal_expr( ir_stmt = lr_data->this ).
+              " Try to evaluate if found data is a literal.
+              DATA(ls_literal_result) = me->backend_eval_literal_expr( ir_stmt = lr_this ).
+
+              lv_only_down = abap_true.
 
               " If it is a literal, evaluate its value.
               IF ls_literal_result-error IS INITIAL.
-                ASSIGN COMPONENT 'value' OF STRUCTURE lr_data->this->* TO FIELD-SYMBOL(<value>).
+                ASSIGN COMPONENT 'value' OF STRUCTURE lr_this->* TO FIELD-SYMBOL(<value>).
 
                 IF sy-subrc <> 0.
-                  rs_result-error = me->backend_build_error( iv_error = 'Literal has no value property' is_token = ls_arg-param-token ).
-                  RETURN.
+                  lv_undefined = abap_true.
+                  EXIT.
                 ENDIF.
 
-                GET REFERENCE OF <value> INTO DATA(lr_value).
-
-                " Create literal data.
-                lr_data = NEW ts_data(
-                  this   = lr_value
-                  parent = lr_parent
-                ).
+                GET REFERENCE OF <value> INTO lr_this.
               ENDIF.
 
               lv_skip = abap_true.
@@ -2396,58 +2382,23 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
-      DATA lv_error TYPE string.
+      " If undefined has been discovered, exit loop.
+      IF lv_undefined <> abap_false.
+        EXIT.
+      ENDIF.
 
       " Use a do-loop to be able to go upwards in the structure tree to look for a property.
       DO.
-        " If lr_data is not bound, it means that there's no structure to look up for the property at.
-        IF lr_data IS NOT BOUND.
-
-          " If it's the first iteration and no property has been found, it's possible
-          " that the path refers to an inline-helper.
-          IF lv_index = 1.
-            DATA(ls_find_helper_result) = me->find_helper( ir_instance = me iv_name = lv_part ).
-
-            " If it's a helper, invoke it and use the result.
-            IF ls_find_helper_result-error IS INITIAL.
-              DATA(rs_helper_result) = me->backend_call_helper(
-                iv_name = lv_part
-                is_data = is_data
-              ).
-              lv_error = rs_helper_result-error.
-
-              IF lv_error IS NOT INITIAL.
-                rs_result-error = lv_error.
-                RETURN.
-              ENDIF.
-
-              lr_data = NEW ts_data(
-                this = NEW string( rs_helper_result-text )
-              ).
-              EXIT.
-            ENDIF.
-          ENDIF.
-
-          rs_result-error = me->backend_build_error( iv_error = |Field { lv_part } doesn't exist| is_token = ls_token ).
-          RETURN.
-        ENDIF.
 
         " Skip if the first path part was either "this" or a block-parameter name.
         IF lv_skip = abap_false.
-          DATA(lr_this) = lr_data->this.
           lv_kind = me->backend_get_data_kind( lr_this ).
 
           " Check if there's something to check the property on.
           IF lv_kind = e_backend_data_kind_undefined.
-
-            " If it's not the last part of the evaluation, exit with error. Otherwise, the property is just undefined.
-            IF lv_index < lv_lines.
-              rs_result-error = me->backend_build_error( iv_error = |{ lv_part } cannot be evaluated on undefined| is_token = ls_token ).
-              RETURN.
-            ELSE.
-              EXIT.
-            ENDIF.
+            lv_undefined = abap_true.
           ELSE.
+            lv_property_found = abap_false.
 
             " Check if data is a structure.
             IF lv_kind = e_backend_data_kind_struct.
@@ -2458,29 +2409,35 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
                 lv_property_found = abap_true.
 
                 GET REFERENCE OF <field> INTO lr_this.
-                APPEND lv_part TO lt_path_parts.
-
-                lr_parent = NEW ts_data( ). " Make sure parent is on the heap.
-                lr_parent->* = lr_data->*.
-
-                lr_data = NEW ts_data(
-                  this   = lr_this
-                  parent = lr_parent
-                ).
                 EXIT.
               ENDIF.
             ENDIF.
 
             " If no property has been found yet, go further up.
-            IF lv_property_found = abap_false AND lr_data->parent IS BOUND.
-              TRY.
-                  lr_data ?= lr_data->parent.
-                CATCH cx_root.
-                  rs_result-error = me->backend_build_error( iv_error = c_parent_no_ts_data_struct is_token = ls_token ).
-                  RETURN.
-              ENDTRY.
-            ELSE.
-              FREE lr_data.
+            IF lv_property_found = abap_false.
+
+              " Only go further up if it's allowed.
+              IF lv_only_down = abap_false.
+                lr_block = me->backend_get_block( lv_block_index ).
+
+                IF lr_block IS NOT BOUND.
+                  lv_undefined = abap_true.
+                  EXIT.
+                ENDIF.
+
+                lt_block_args = lr_block->args.
+
+                IF lines( lt_block_args ) > 0.
+                  lr_this = lt_block_args[ 1 ]-data.
+                ELSE.
+                  lv_undefined = abap_true.
+                  EXIT.
+                ENDIF.
+
+                lv_block_index = lv_block_index - 1.
+              ELSE.
+                EXIT.
+              ENDIF.
             ENDIF.
           ENDIF.
         ELSE.
@@ -2491,16 +2448,43 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       lv_index = lv_index + 1.
     ENDWHILE.
 
-    " If the last found property was undefined, create an undefined ts_data.
-    IF lv_kind = e_backend_data_kind_undefined.
-      lr_data = NEW ts_data(
-        this   = NEW ts_parser_undefined_literal( )
-        parent = lr_parent
-      ).
+    " If lr_data is not bound, it means that there's no structure to look up for the property at.
+    IF lr_this IS NOT BOUND AND lv_property_found = abap_false.
+
+      " If it's the first iteration and no property has been found, it's possible
+      " that the path refers to an inline-helper.
+      IF lv_index = 1.
+        DATA(ls_find_helper_result) = me->find_helper( ir_instance = me iv_name = lv_part ).
+
+        " If it's a helper, invoke it and use the result.
+        IF ls_find_helper_result-error IS INITIAL.
+          DATA(rs_helper_result) = me->backend_call_helper(
+            iv_name = lv_part
+            ir_data = ir_data
+          ).
+          DATA(lv_error) = rs_helper_result-error.
+
+          IF lv_error IS NOT INITIAL.
+            rs_helper_result-error = lv_error.
+            RETURN.
+          ENDIF.
+
+          lr_this = NEW string( rs_helper_result-text ).
+          EXIT.
+        ENDIF.
+      ENDIF.
+
+      lv_undefined = abap_true.
+      EXIT.
     ENDIF.
 
-    rs_result-data = lr_data->*.
-    rs_result-kind = me->backend_get_data_kind( lr_data->this ).
+    " If the last found property is undefined, create an empty string.
+    IF lv_undefined = abap_true OR lv_kind = e_backend_data_kind_undefined.
+      lr_this = NEW string( ).
+    ENDIF.
+
+    rs_result-data = lr_this.
+    rs_result-kind = me->backend_get_data_kind( lr_this ).
   ENDMETHOD.
 
 
@@ -2588,11 +2572,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
         CASE lv_type_name.
           WHEN 'ts_class_helper'.
-            DATA ls_class_helper_config TYPE REF TO ts_class_helper.
-            ls_class_helper_config ?= lr_helper.
+            DATA lr_class_helper_config TYPE REF TO ts_class_helper.
+            lr_class_helper_config ?= lr_helper.
 
-            DATA(lv_class_name) = ls_class_helper_config->class_name.
-            DATA(lv_class_method_name) = ls_class_helper_config->method_name.
+            DATA(lv_class_name) = lr_class_helper_config->class_name.
+            DATA(lv_class_method_name) = lr_class_helper_config->method_name.
 
             TRANSLATE lv_class_name TO UPPER CASE.
             TRANSLATE lv_class_method_name TO UPPER CASE.
@@ -2602,62 +2586,62 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
                 io_instance = me
                 iv_name     = iv_name
                 it_args     = it_args
-                is_data     = is_data
+                ir_data     = ir_data
               RECEIVING
                 rs_result   = rs_result.
 
           WHEN 'ts_object_helper'.
-            DATA ls_object_helper_config TYPE REF TO ts_object_helper.
-            ls_object_helper_config ?= lr_helper.
+            DATA lr_object_helper_config TYPE REF TO ts_object_helper.
+            lr_object_helper_config ?= lr_helper.
 
-            DATA(lv_object_method_name) = ls_object_helper_config->method_name.
+            DATA(lv_object_method_name) = lr_object_helper_config->method_name.
             TRANSLATE lv_object_method_name TO UPPER CASE.
 
-            CALL METHOD ls_object_helper_config->object->(lv_object_method_name)
+            CALL METHOD lr_object_helper_config->object->(lv_object_method_name)
               EXPORTING
                 io_instance = me
                 iv_name     = iv_name
                 it_args     = it_args
-                is_data     = is_data
+                ir_data     = ir_data
               RECEIVING
                 rs_result   = rs_result.
 
           WHEN 'ts_func_module_helper'.
-            DATA ls_func_module_helper_config TYPE REF TO ts_func_module_helper.
-            ls_func_module_helper_config ?= lr_helper.
+            DATA lr_func_module_helper_config TYPE REF TO ts_func_module_helper.
+            lr_func_module_helper_config ?= lr_helper.
 
-            DATA(lv_function_name) = ls_func_module_helper_config->function_name.
+            DATA(lv_function_name) = lr_func_module_helper_config->function_name.
             TRANSLATE lv_function_name TO UPPER CASE.
 
-            CALL FUNCTION ls_func_module_helper_config->function_name
+            CALL FUNCTION lr_func_module_helper_config->function_name
               EXPORTING
                 io_instance = me
                 iv_name     = iv_name
                 it_args     = it_args
-                is_data     = is_data
+                ir_data     = ir_data
               IMPORTING
                 es_result   = rs_result.
 
           WHEN 'ts_form_helper'.
-            DATA ls_form_helper_config TYPE REF TO ts_form_helper.
-            ls_form_helper_config ?= lr_helper.
+            DATA lr_form_helper_config TYPE REF TO ts_form_helper.
+            lr_form_helper_config ?= lr_helper.
 
-            DATA(lv_form_name) = ls_form_helper_config->form_name.
-            DATA(lv_report_name) = ls_form_helper_config->report_name.
+            DATA(lv_form_name) = lr_form_helper_config->form_name.
+            DATA(lv_report_name) = lr_form_helper_config->report_name.
 
             TRANSLATE lv_form_name TO UPPER CASE.
             TRANSLATE lv_report_name TO UPPER CASE.
 
             DATA(lv_name) = iv_name.
             DATA(lt_args) = it_args.
-            DATA(ls_data) = is_data.
+            DATA(lr_data) = ir_data.
 
             PERFORM (lv_form_name) IN PROGRAM (lv_report_name)
               USING
                 me
                 lv_name
                 lt_args
-                ls_data
+                lr_data
               CHANGING
                 rs_result.
 
