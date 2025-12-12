@@ -8,7 +8,7 @@ CLASS ltcl_handlebars_abap DEFINITION FOR TESTING
         io_instance      TYPE REF TO zcl_handlebars_abap
         iv_name          TYPE string
         it_args          TYPE zcl_handlebars_abap=>tt_data
-        is_data          TYPE zcl_handlebars_abap=>ts_data
+        is_data          TYPE zcl_handlebars_abap=>tr_data
       RETURNING
         VALUE(rs_result) TYPE zcl_handlebars_abap=>ts_text_result.
 
@@ -35,6 +35,7 @@ CLASS ltcl_handlebars_abap DEFINITION FOR TESTING
     METHODS: template_table_success FOR TESTING.
     METHODS: template_custom_helper_success FOR TESTING.
     METHODS: template_else_on_undef_success FOR TESTING.
+    METHODS: template_resolve_order_success FOR TESTING.
     METHODS: template_load_template_fail FOR TESTING.
 
 ENDCLASS.
@@ -43,10 +44,10 @@ ENDCLASS.
 CLASS ltcl_handlebars_abap IMPLEMENTATION.
   METHOD hello.
     DATA lv_name TYPE string.
-    lv_name = it_args[ 1 ]-this->*.
+    lv_name = it_args[ 1 ]->*.
 
-    rs_result = io_instance->fn( it_data = VALUE zcl_handlebars_abap=>tt_data(
-      ( this = NEW string( |Hello { lv_name } | ) )
+    rs_result = io_instance->fn( VALUE zcl_handlebars_abap=>tt_data(
+      ( NEW string( |Hello { lv_name } | ) )
     ) ).
   ENDMETHOD.
 
@@ -156,6 +157,93 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       exp = c_success
       act = zcl_handlebars_abap=>compile( '{{#if ../firstName}}{{else}}' && c_success && '{{/if}}' )-instance->template( )-text
+    ).
+  ENDMETHOD.
+
+
+  METHOD template_resolve_order_success.
+    TYPES: BEGIN OF ts_superior,
+             title     TYPE ts_title,
+             firstName TYPE string,
+             lastName  TYPE string,
+             employee  TYPE ts_person,
+           END OF ts_superior.
+
+    TYPES: BEGIN OF ty_address,
+             city TYPE string,
+           END OF ty_address.
+
+    TYPES: BEGIN OF ty_pet,
+             name TYPE string,
+           END OF ty_pet.
+
+    TYPES: tt_pets TYPE STANDARD TABLE OF ty_pet WITH EMPTY KEY.
+
+    TYPES: BEGIN OF ty_user,
+             name    TYPE string,
+             address TYPE ty_address,
+             pets    TYPE tt_pets,
+           END OF ty_user.
+
+    TYPES: BEGIN OF ty_item,
+             name TYPE string,
+           END OF ty_item.
+
+    TYPES: tt_items TYPE STANDARD TABLE OF ty_item WITH EMPTY KEY.
+
+    TYPES: BEGIN OF ty_root,
+             title TYPE string,
+             user  TYPE ty_user,
+             items TYPE tt_items,
+           END OF ty_root.
+
+    DATA(lv_template_part_1) = '{{title}}' &
+      '{{#with user as |u|}}' &
+      '{{u.name}}' &
+      '{{name}}' &
+      '{{u.address.city}}'.
+
+    DATA(lv_template_part_2) = '{{#each u.pets as |pet i|}}' &
+      '{{pet.name}}' &
+      '{{../name}}' &
+      '{{../../title}}' &
+    '{{/each}}' &
+  '{{/with}}'.
+
+    DATA(lv_template_part_3) = 'List of items:' &
+    '{{#each items as |item i|}}' &
+      '{{name}}' &
+      '{{../this.title}}' &
+      '{{i}}' &
+    '{{/each}}'.
+
+    DATA(lv_template) = lv_template_part_1 && lv_template_part_2 && lv_template_part_3.
+    DATA(ls_root) = VALUE ty_root(
+      title = 'Demo Root Title'
+      user  = VALUE ty_user(
+        name    = 'Alice'
+        address = VALUE ty_address( city = 'Berlin' )
+        pets    = VALUE tt_pets(
+          ( name = 'Fluffy' )
+          ( name = 'Milo'   )
+        )
+      )
+      items = VALUE tt_items(
+        ( name = 'Alpha' )
+        ( name = 'Beta'  )
+        ( name = 'Gamma' )
+      )
+    ).
+
+    DATA(ls_compile_result) = zcl_handlebars_abap=>compile( lv_template ).
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_compile_result-error ).
+
+    DATA(ls_template_result) = ls_compile_result-instance->template( ls_root ).
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = 'Demo Root TitleAliceAliceBerlinFluffyAliceDemo Root TitleMiloAliceDemo Root TitleList of items:AlphaDemo Root Title0BetaDemo Root Title1GammaDemo Root Title2'
+      act = ls_template_result-text
     ).
   ENDMETHOD.
 
