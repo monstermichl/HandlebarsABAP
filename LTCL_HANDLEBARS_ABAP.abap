@@ -8,7 +8,7 @@ CLASS ltcl_handlebars_abap DEFINITION FOR TESTING
         io_instance      TYPE REF TO zcl_handlebars_abap
         iv_name          TYPE string
         it_args          TYPE zcl_handlebars_abap=>tt_data
-        is_data          TYPE zcl_handlebars_abap=>tr_data
+        ir_data          TYPE zcl_handlebars_abap=>tr_data
       RETURNING
         VALUE(rs_result) TYPE zcl_handlebars_abap=>ts_text_result.
 
