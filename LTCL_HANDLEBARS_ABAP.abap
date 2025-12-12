@@ -46,9 +46,7 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
     DATA lv_name TYPE string.
     lv_name = it_args[ 1 ]->*.
 
-    rs_result = io_instance->fn( VALUE zcl_handlebars_abap=>tt_data(
-      ( NEW string( |Hello { lv_name } | ) )
-    ) ).
+    rs_result = io_instance->fn( NEW string( |Hello { lv_name } | ) ).
   ENDMETHOD.
 
 
