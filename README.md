@@ -1,5 +1,5 @@
 # HandlebarsABAP
-[Handlebars](https://handlebarsjs.com/) implementation for ABAP. For details about the templating language itself, please refer to the original [documentation](https://handlebarsjs.com/guide/).
+Single-file [Handlebars](https://handlebarsjs.com/) implementation for ABAP. For details about the templating language itself, please refer to the original [documentation](https://handlebarsjs.com/guide/).
 
 To compile a Handlebars template, simply pass it to the static *compile*-method. If a template-name (transaction SMW0) gets passed, the template gets loaded instead.
 
