@@ -205,29 +205,29 @@ CLASS zcl_handlebars_abap DEFINITION
         iv_import_static_helpers TYPE abap_bool.
 
     " .:: Tokenizer section.
-    TYPES: BEGIN OF ENUM e_tokenizer_token_types,
-             e_token_type_unknown,
-             e_token_type_text,
-             e_token_type_hashtag,
-             e_token_type_slash,
-             e_token_type_o_round_bracket,
-             e_token_type_c_round_bracket,
-             e_token_type_pipe,
-             e_token_type_at,
-             e_token_type_else,
-             e_token_type_as,
-             e_token_type_null,
-             e_token_type_undefined,
-             e_token_type_bool_literal,
-             e_token_type_number_literal,
-             e_token_type_string_literal,
-             e_token_type_path,
-             e_token_type_space,
-             e_token_type_eop,
-             e_token_type_eof,
-           END OF ENUM e_tokenizer_token_types.
+    TYPES: e_tokenizer_token_type TYPE string.
 
-    TYPES: tt_tokenizer_token_types TYPE STANDARD TABLE OF e_tokenizer_token_types WITH DEFAULT KEY.
+    CONSTANTS: e_token_type_unknown         TYPE e_tokenizer_token_type VALUE 'unknown',
+               e_token_type_text            TYPE e_tokenizer_token_type VALUE 'text',
+               e_token_type_hashtag         TYPE e_tokenizer_token_type VALUE 'hashtag',
+               e_token_type_slash           TYPE e_tokenizer_token_type VALUE 'slash',
+               e_token_type_o_round_bracket TYPE e_tokenizer_token_type VALUE 'opening round bracket',
+               e_token_type_c_round_bracket TYPE e_tokenizer_token_type VALUE 'closing round bracket',
+               e_token_type_pipe            TYPE e_tokenizer_token_type VALUE 'pipe',
+               e_token_type_at              TYPE e_tokenizer_token_type VALUE 'at',
+               e_token_type_else            TYPE e_tokenizer_token_type VALUE 'else',
+               e_token_type_as              TYPE e_tokenizer_token_type VALUE 'as',
+               e_token_type_null            TYPE e_tokenizer_token_type VALUE 'null',
+               e_token_type_undefined       TYPE e_tokenizer_token_type VALUE 'undefined',
+               e_token_type_bool_literal    TYPE e_tokenizer_token_type VALUE 'bool literal',
+               e_token_type_number_literal  TYPE e_tokenizer_token_type VALUE 'number literal',
+               e_token_type_string_literal  TYPE e_tokenizer_token_type VALUE 'string literal',
+               e_token_type_path            TYPE e_tokenizer_token_type VALUE 'path',
+               e_token_type_space           TYPE e_tokenizer_token_type VALUE 'space',
+               e_token_type_eop             TYPE e_tokenizer_token_type VALUE 'end of placeholder',
+               e_token_type_eof             TYPE e_tokenizer_token_type VALUE 'end of file'.
+
+    TYPES: tt_tokenizer_token_types TYPE STANDARD TABLE OF e_tokenizer_token_type WITH DEFAULT KEY.
 
     TYPES: BEGIN OF ts_tokenizer_placeholder,
              offset     TYPE i,
@@ -241,7 +241,7 @@ CLASS zcl_handlebars_abap DEFINITION
     TYPES: BEGIN OF ts_tokenizer_token,
              position TYPE i,
              value    TYPE string,
-             type     TYPE e_tokenizer_token_types,
+             type     TYPE e_tokenizer_token_type,
            END OF ts_tokenizer_token.
 
     TYPES: tt_tokenizer_tokens TYPE STANDARD TABLE OF ts_tokenizer_token WITH DEFAULT KEY.
@@ -276,7 +276,7 @@ CLASS zcl_handlebars_abap DEFINITION
       IMPORTING
         VALUE(iv_value)    TYPE string
         VALUE(iv_position) TYPE i
-        VALUE(iv_type)     TYPE e_tokenizer_token_types.
+        VALUE(iv_type)     TYPE e_tokenizer_token_type.
 
     " .:: Parser section.
     TYPES: tr_parser_statement TYPE REF TO data.
@@ -475,13 +475,13 @@ CLASS zcl_handlebars_abap DEFINITION
         VALUE(rv_error) TYPE string.
 
     " .:: Backend section
-    TYPES: BEGIN OF ENUM e_backend_data_kinds,
-             e_backend_data_kind_unknown,
-             e_backend_data_kind_undefined,
-             e_backend_data_kind_simple,
-             e_backend_data_kind_struct,
-             e_backend_data_kind_table,
-           END OF ENUM e_backend_data_kinds.
+    TYPES: e_backend_data_kinds TYPE string.
+
+    CONSTANTS: e_backend_data_kind_unknown   TYPE e_backend_data_kinds VALUE 'unknown',
+               e_backend_data_kind_undefined TYPE e_backend_data_kinds VALUE 'undefined',
+               e_backend_data_kind_simple    TYPE e_backend_data_kinds VALUE 'simple',
+               e_backend_data_kind_struct    TYPE e_backend_data_kinds VALUE 'struct',
+               e_backend_data_kind_table     TYPE e_backend_data_kinds VALUE 'table'.
 
     TYPES: BEGIN OF ts_backend_block_param,
              name TYPE string,
@@ -853,7 +853,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
   METHOD find_helper.
     " Try to get a registered helper by its name
-    READ TABLE ir_instance->mt_helpers REFERENCE INTO DATA(lr_helper) WHERE name = iv_name.
+    READ TABLE ir_instance->mt_helpers REFERENCE INTO DATA(lr_helper) WITH KEY name = iv_name.
 
     IF sy-subrc <> 0.
       rs_result-error = |No helper found for { iv_name }|.
@@ -920,14 +920,14 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   METHOD tokenizer_tokenize.
     TYPES: BEGIN OF ts_tokenizer_token_mapping,
              pattern TYPE string,
-             type    TYPE e_tokenizer_token_types,
+             type    TYPE e_tokenizer_token_type,
            END OF ts_tokenizer_token_mapping.
 
     TYPES: tt_token_mappings TYPE STANDARD TABLE OF ts_tokenizer_token_mapping WITH DEFAULT KEY.
 
     TYPES: BEGIN OF ts_match_mapping,
              match TYPE match_result,
-             type  TYPE e_tokenizer_token_types,
+             type  TYPE e_tokenizer_token_type,
            END OF ts_match_mapping.
 
     CONSTANTS: c_space           TYPE string VALUE '\s+',
@@ -1044,7 +1044,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
           " Try to find characters.
           LOOP AT lt_char_mappings INTO DATA(ls_mapping).
-            FIND PCRE |^({ ls_mapping-pattern })| IN lv_subcontent RESULTS ls_match.
+            FIND REGEX |^({ ls_mapping-pattern })| IN lv_subcontent RESULTS ls_match.
 
             IF sy-subrc = 0.
               ls_match_mapping = VALUE #(
@@ -1062,7 +1062,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
             LOOP AT lt_keyword_mappings INTO ls_mapping.
               DATA(lv_pattern) = |^({ ls_mapping-pattern })(?=\\W\|$)|.
 
-              FIND PCRE lv_pattern IN lv_subcontent RESULTS ls_match.
+              FIND REGEX lv_pattern IN lv_subcontent RESULTS ls_match.
 
               IF sy-subrc = 0.
                 ls_match_mapping = VALUE #(
@@ -1119,11 +1119,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD tokenizer_eval_placeholders.
-    TYPES: BEGIN OF ENUM e_comment_types,
-             e_comment_type_none,
-             e_comment_type_simple,
-             e_comment_type_complex,
-           END OF ENUM e_comment_types.
+    TYPES: e_comment_types TYPE i.
+
+    CONSTANTS: e_comment_type_none    TYPE e_comment_types VALUE 0,
+               e_comment_type_simple  TYPE e_comment_types VALUE 1,
+               e_comment_type_complex TYPE e_comment_types VALUE 2.
 
     CONSTANTS: c_opening_brackets TYPE string VALUE '{{',
                c_closing_brackets TYPE string VALUE '}}',
@@ -1841,7 +1841,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         " unwanted spaces (e.g. for positive number a space is
         " added at the end, while for negative numbers a "-" is
         " added at the end...
-        rs_result-text = |{ ls_eval_expr_result-data->* }|.
+        ASSIGN ls_eval_expr_result-data->* TO FIELD-SYMBOL(<data>).
+        rs_result-text = |{ <data> }|.
     ENDCASE.
   ENDMETHOD.
 
@@ -1966,7 +1967,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     " "Downcast" to common base.
     DATA(lr_helper) = NEW ts_parser_helper( ).
-    MOVE-CORRESPONDING ir_helper->* TO lr_helper->*.
+    ASSIGN ir_helper->* TO FIELD-SYMBOL(<helper_base>).
+    MOVE-CORRESPONDING <helper_base> TO lr_helper->*.
 
     IF lr_helper->name IS INITIAL.
       rs_result-error = 'Invalid helper cast'.
@@ -2005,7 +2007,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       APPEND VALUE #( block = lr_block ) TO me->mt_backend_block_stack.
     ELSE.
       " ...or set current inline helper values.
-      MOVE-CORRESPONDING ir_helper->* TO me->mv_backend_inline_helper.
+      ASSIGN ir_helper->* TO FIELD-SYMBOL(<helper>).
+      MOVE-CORRESPONDING <helper> TO me->mv_backend_inline_helper.
     ENDIF.
 
     rs_result = me->backend_call_helper(
@@ -2061,7 +2064,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       IF lv_kind <> e_backend_data_kind_table.
         lt_data = VALUE #( ( lr_data ) ).
       ELSE.
-        lt_data = lr_data->*.
+        ASSIGN lr_data->* TO FIELD-SYMBOL(<table>).
+        lt_data = <table>.
       ENDIF.
 
       " Fill block parameters with values.
@@ -2156,7 +2160,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
             LOOP AT lt_components INTO DATA(ls_field).
               DATA(lv_field_name) = ls_field-name.
 
-              ASSIGN COMPONENT lv_field_name OF STRUCTURE lr_iterable->* TO FIELD-SYMBOL(<field>).
+              ASSIGN lr_iterable->* TO FIELD-SYMBOL(<structure>).
+              ASSIGN COMPONENT lv_field_name OF STRUCTURE <structure> TO FIELD-SYMBOL(<field>).
 
               GET REFERENCE OF <field> INTO DATA(lr_field).
               GET REFERENCE OF lv_field_name INTO DATA(lr_key).
@@ -2258,7 +2263,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         lv_log_text = |{ lv_log_text } |.
       ENDIF.
 
-      lv_log_text = |{ lv_log_text }{ ls_arg->* }|.
+      ASSIGN ls_arg->* TO FIELD-SYMBOL(<arg>).
+      lv_log_text = |{ lv_log_text }{ <arg> }|.
     ENDLOOP.
 
     IF lv_log_text <> ' '.
@@ -2363,7 +2369,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
               " If it is a literal, evaluate its value.
               IF ls_literal_result-error IS INITIAL.
-                ASSIGN COMPONENT 'value' OF STRUCTURE lr_this->* TO FIELD-SYMBOL(<value>).
+                ASSIGN lr_this->* TO FIELD-SYMBOL(<literal_structure>).
+                ASSIGN COMPONENT 'value' OF STRUCTURE <literal_structure> TO FIELD-SYMBOL(<value>).
 
                 IF sy-subrc <> 0.
                   lv_undefined = abap_true.
@@ -2402,7 +2409,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
             " Check if data is a structure.
             IF lv_kind = e_backend_data_kind_struct.
-              ASSIGN COMPONENT lv_part OF STRUCTURE lr_this->* TO FIELD-SYMBOL(<field>).
+              ASSIGN lr_this->* TO FIELD-SYMBOL(<structure>).
+              ASSIGN COMPONENT lv_part OF STRUCTURE <structure> TO FIELD-SYMBOL(<field>).
 
               " Check if requested path exists.
               IF sy-subrc = 0.
@@ -2531,7 +2539,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     CASE lv_kind.
       WHEN e_backend_data_kind_simple.
-        lv_truthy = xsdbool( ir_data->* <> ' ' ).
+        ASSIGN ir_data->* TO FIELD-SYMBOL(<bool>).
+        lv_truthy = xsdbool( <bool> <> ' ' ).
 
       WHEN e_backend_data_kind_struct.
         DATA(lo_struct_desc) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data_ref( ir_data ) ).
@@ -2663,7 +2672,9 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       " Make sure the passed data is a struct, because on simple data like integer it would crash
       IF lv_kind = e_backend_data_kind_struct.
         DATA ls_token_base TYPE ts_parser_stmt_base.
-        MOVE-CORRESPONDING ir_struct->* TO ls_token_base.
+
+        ASSIGN ir_struct->* TO FIELD-SYMBOL(<token_base>).
+        MOVE-CORRESPONDING <token_base> TO ls_token_base.
 
         IF sy-subrc = 0.
           rs_token = ls_token_base-token.
