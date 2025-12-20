@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+env:
+  ABAPGIT_CLASS_FILE: src/zcl_handlebars_abap.clas.abap
+  RELEASE_CLASS_FILE: ZCL_HANDLEBARS_ABAP.abap
+
 jobs:
   build:
     name: Create release file
@@ -19,10 +23,12 @@ jobs:
       - name: Set version
         shell: bash
         run: |
-          sed -i 's/{{version}}/${{ github.event.release.tag_name }}/g' ZCL_HANDLEBARS_ABAP.abap
+          sed -i 's/{{version}}/${{ github.event.release.tag_name }}/g' ${ABAPGIT_CLASS_FILE}
 
       - name: Upload
         run: |
-          gh release upload ${{ github.event.release.tag_name }} ZCL_HANDLEBARS_ABAP.abap
+          ${ABAPGIT_CLASS_FILE} ${RELEASE_CLASS_FILE}
+          gh release upload ${{ github.event.release.tag_name }} ${RELEASE_CLASS_FILE}
+          rm ${RELEASE_CLASS_FILE}
         env:
             GH_TOKEN: ${{ github.TOKEN }}
