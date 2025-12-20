@@ -1,7 +1,19 @@
 # HandlebarsABAP
-Single-file [Handlebars](https://handlebarsjs.com/) implementation for ABAP. For details about the templating language itself, please refer to the original [documentation](https://handlebarsjs.com/guide/).
+Single-file [Handlebars](https://handlebarsjs.com/) implementation for ABAP.
 
-To compile a Handlebars template, simply pass it to the static *compile*-method. If a template-name (transaction SMW0) gets passed, the template gets loaded instead.
+## What is Handlebars?
+To quote the [Handlebars documentation](https://handlebarsjs.com/guide/):
+> Handlebars is a simple templating language.
+> It uses a template and an input object to generate HTML or other text formats. Handlebars templates look like regular text with embedded Handlebars expressions.
+> ```hbs
+> <p>{{firstname}} {{lastname}}</p>
+> ```
+>A handlebars expression is a ```{{```, some contents, followed by a ```}}```. When the template is executed, these expressions are replaced with values from an input object.
+
+## Why Handlebars for ABAP?
+Even though the *WWW_HTML_MERGER* function module exists to load and merge HTML templates with simple data, it is very limited in its use. Handlebars on the other hand allows for building highly flexible templates and automatically resolves deeply nested structures and tables, making it easy to quickly build extremely customizable HTMLs/texts based on its input data.
+
+To compile a Handlebars template, simply pass it to the static *compile*-method and call the returned instance's *template*-method to fill the template with the provided data. *HINT*: If a template-name (transaction SMW0) gets passed to *compile*, the template gets loaded instead.
 
 ```abap
 TYPES: BEGIN OF ts_title,
@@ -36,7 +48,7 @@ WRITE / ls_template_result-text. " Prints 'Ing. Peter Parker'.
 ```
 
 ## Installation
-HandlebarsABAP can be installed via [abapGit](https://docs.abapgit.org/user-guide/projects/online/install.html) or by just creating a *ZCL_HANDLEBARS_ABAP*-class on the client and pasting the content of the latest *ZCL_HANDLEBARS_ABAP.abap* release file into it.
+HandlebarsABAP can be installed via [abapGit](https://docs.abapgit.org/user-guide/projects/online/install.html) or by simply creating a *ZCL_HANDLEBARS_ABAP*-class on the client and pasting the content of the latest *ZCL_HANDLEBARS_ABAP.abap* release file into it.
 
 ## What's supported so far
 ### Fields
@@ -107,7 +119,7 @@ HandlebarsABAP can be installed via [abapGit](https://docs.abapgit.org/user-guid
 {{/if}}
 ```
 
-### Custom helpers
+### Custom (block) helpers
 It's possible to write and configure custom helpers like in HandlebarsJS but it works a bit differently. In HandlebarsJS a *fn*- and a *reverse*-function is passed to the helper which then need to be called to render either the block-content or the else-content. Since ABAP does not allow to pass functions to other functions or methods, the corresponding functions are part of the *zbc_handlebars_abap* class. The instance of the class gets passed to the helper and the helper needs to either invoke *fn* or *reverse* on that instance. The first argument that's passed to the corresponding function is considered the new context within the block (*this*).
 
 ```abap
