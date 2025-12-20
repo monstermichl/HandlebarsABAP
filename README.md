@@ -35,10 +35,13 @@ DATA(ls_template_result) = ls_compile_result-instance->template( ls_person ).
 WRITE / ls_template_result-text. " Prints 'Ing. Peter Parker'.
 ```
 
+## Installation
+HandlebarsABAP can be installed via [abapGit](https://docs.abapgit.org/user-guide/projects/online/install.html) or by just creating a *ZCL_HANDLEBARS_ABAP*-class on the client and pasting the content of the latest *ZCL_HANDLEBARS_ABAP.abap* release file into it.
+
 ## What's supported so far
 ### Fields
 ```hbs
-{{firstName}} {{lastName}}
+{{title.front}} {{firstName}} {{lastName}} {{title.back}}
 ```
 
 ### Block helpers
