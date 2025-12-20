@@ -23,12 +23,10 @@ jobs:
       - name: Set version
         shell: bash
         run: |
-          sed -i 's/{{version}}/${{ github.event.release.tag_name }}/g' ${ABAPGIT_CLASS_FILE}
+          sed 's/{{version}}/${{ github.event.release.tag_name }}/g' ${ABAPGIT_CLASS_FILE} > ${RELEASE_CLASS_FILE}
 
       - name: Upload
         run: |
-          ${ABAPGIT_CLASS_FILE} ${RELEASE_CLASS_FILE}
           gh release upload ${{ github.event.release.tag_name }} ${RELEASE_CLASS_FILE}
-          rm ${RELEASE_CLASS_FILE}
         env:
             GH_TOKEN: ${{ github.TOKEN }}
