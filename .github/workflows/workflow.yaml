@@ -1,9 +1,11 @@
-name: HandlebarsABAP release
+name: HandlebarsABAP workflow
 
 on:
   release:
     types:
       - created
+  push:
+  pull_request:
 
 permissions:
   contents: write
@@ -13,7 +15,23 @@ env:
   RELEASE_CLASS_FILE: ZCL_HANDLEBARS_ABAP.abap
 
 jobs:
-  build:
+  lint:
+    name: Lint source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "24"
+      - name: Install abaplint
+        run: npm install @abaplint/cli
+
+      - name: Lint
+        run: npx abaplint
+
+  release:
     name: Create release file
     if: ${{ github.event_name == 'release' }}
     runs-on: ubuntu-latest

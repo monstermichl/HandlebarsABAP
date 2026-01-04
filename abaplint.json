@@ -1,0 +1,36 @@
+{
+    "global": {
+        "files": "/src/**/*.*",
+        "exclude": [],
+        "noIssues": [],
+        "skipGeneratedBOPFInterfaces": false,
+        "skipGeneratedFunctionGroups": false,
+        "skipGeneratedGatewayClasses": false,
+        "skipGeneratedPersistentClasses": false,
+        "skipGeneratedProxyClasses": false,
+        "skipGeneratedProxyInterfaces": false,
+        "useApackDependencies": false,
+        "skipIncludesWithoutMain": false
+    },
+    "dependencies": [
+        {
+            "folder": "/deps",
+            "files": "/src/**/*.*"
+        }
+    ],
+    "syntax": {
+        "version": "v740sp02",
+        "errorNamespace": "^(Z|Y|LCL_|TY_|LIF_)",
+        "globalConstants": [],
+        "globalMacros": []
+    },
+    "rules": {
+        "check_syntax": true,
+        "avoid_use": true,
+        "unused_variables": true,
+        "parser_error": {
+            "exclude": [],
+            "severity": "Error"
+        }
+    }
+}

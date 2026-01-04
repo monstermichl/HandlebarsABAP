@@ -1,5 +1,5 @@
 # HandlebarsABAP
-Single-file [Handlebars](https://handlebarsjs.com/) implementation for ABAP.
+Single-file 7.40SP02-compatible [Handlebars](https://handlebarsjs.com/) implementation for ABAP.
 
 ## What is Handlebars?
 To quote the [Handlebars documentation](https://handlebarsjs.com/guide/):
@@ -48,7 +48,7 @@ WRITE / ls_template_result-text. " Prints 'Ing. Peter Parker'.
 ```
 
 ## Installation
-HandlebarsABAP can be installed via [abapGit](https://docs.abapgit.org/user-guide/projects/online/install.html) or by simply creating a *ZCL_HANDLEBARS_ABAP*-class on the client and pasting the content of the latest *ZCL_HANDLEBARS_ABAP.abap* release file into it.
+HandlebarsABAP can be installed by using the latest release-tag via [abapGit](https://docs.abapgit.org/user-guide/projects/online/install.html) or by simply creating a *ZCL_HANDLEBARS_ABAP*-class on the client and pasting the content of the latest *ZCL_HANDLEBARS_ABAP.abap* release file into it.
 
 ## What's supported so far
 ### Fields
@@ -124,10 +124,9 @@ It's possible to write and configure custom helpers like in HandlebarsJS but it 
 
 ```abap
 METHOD hello.
-  DATA lv_name TYPE string.
-  lv_name = it_args[ 1 ]->*.
+  ASSIGN it_args[ 1 ]->* TO FIELD-SYMBOL(<name>).
 
-  rs_result = io_instance->fn( NEW string( |Hello { lv_name } | ) ).
+  rs_result = io_instance->fn( NEW string( |Hello { <name> } | ) ).
 ENDMETHOD.
 ```
 
