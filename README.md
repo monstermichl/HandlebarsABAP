@@ -48,7 +48,7 @@ WRITE / ls_template_result-text. " Prints 'Ing. Peter Parker'.
 ```
 
 ## Installation
-HandlebarsABAP can be installed via [abapGit](https://docs.abapgit.org/user-guide/projects/online/install.html) or by simply creating a *ZCL_HANDLEBARS_ABAP*-class on the client and pasting the content of the latest *ZCL_HANDLEBARS_ABAP.abap* release file into it.
+HandlebarsABAP can be installed by using the latest release-tag via [abapGit](https://docs.abapgit.org/user-guide/projects/online/install.html) or by simply creating a *ZCL_HANDLEBARS_ABAP*-class on the client and pasting the content of the latest *ZCL_HANDLEBARS_ABAP.abap* release file into it.
 
 ## What's supported so far
 ### Fields
