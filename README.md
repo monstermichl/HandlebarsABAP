@@ -1,5 +1,5 @@
 # HandlebarsABAP
-Single-file 7.40SP02-compatible [Handlebars](https://handlebarsjs.com/) implementation for ABAP.
+Single-file 7.40 SP02 [Handlebars](https://handlebarsjs.com/) implementation for ABAP.
 
 ## What is Handlebars?
 To quote the [Handlebars documentation](https://handlebarsjs.com/guide/):
