@@ -124,10 +124,9 @@ It's possible to write and configure custom helpers like in HandlebarsJS but it 
 
 ```abap
 METHOD hello.
-  DATA lv_name TYPE string.
-  lv_name = it_args[ 1 ]->*.
+  ASSIGN it_args[ 1 ]->* TO FIELD-SYMBOL(<name>).
 
-  rs_result = io_instance->fn( NEW string( |Hello { lv_name } | ) ).
+  rs_result = io_instance->fn( NEW string( |Hello { <name> } | ) ).
 ENDMETHOD.
 ```
 
