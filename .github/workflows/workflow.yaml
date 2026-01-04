@@ -29,7 +29,7 @@ jobs:
         run: npm install @abaplint/cli
 
       - name: Lint
-        run: npx abaplint .
+        run: npx abaplint
 
   release:
     name: Create release file
