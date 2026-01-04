@@ -6,9 +6,9 @@ CLASS ltcl_handlebars_abap DEFINITION FOR TESTING
     CLASS-METHODS hello
       IMPORTING
         io_instance      TYPE REF TO zcl_handlebars_abap
-        iv_name          TYPE string
+        iv_name          TYPE string ##NEEDED
         it_args          TYPE zcl_handlebars_abap=>tt_data
-        ir_data          TYPE zcl_handlebars_abap=>tr_data
+        ir_data          TYPE zcl_handlebars_abap=>tr_data ##NEEDED
       RETURNING
         VALUE(rs_result) TYPE zcl_handlebars_abap=>ts_text_result.
 
@@ -24,12 +24,9 @@ CLASS ltcl_handlebars_abap DEFINITION FOR TESTING
              lastName  TYPE string,
            END OF ts_person.
 
-    TYPES: tt_people TYPE STANDARD TABLE OF ts_person WITH DEFAULT KEY.
+    TYPES: tt_people TYPE STANDARD TABLE OF ts_person WITH EMPTY KEY.
 
     CONSTANTS: c_empty_error TYPE string VALUE ''.
-
-    DATA:
-      f_Cut TYPE REF TO zcl_handlebars_abap.  "class under test
 
     METHODS: template_structure_success FOR TESTING.
     METHODS: template_table_success FOR TESTING.
@@ -43,10 +40,9 @@ ENDCLASS.
 
 CLASS ltcl_handlebars_abap IMPLEMENTATION.
   METHOD hello.
-    DATA lv_name TYPE string.
-    lv_name = it_args[ 1 ]->*.
+    ASSIGN it_args[ 1 ]->* TO FIELD-SYMBOL(<name>).
 
-    rs_result = io_instance->fn( NEW string( |Hello { lv_name } | ) ).
+    rs_result = io_instance->fn( NEW string( |Hello { <name> } | ) ).
   ENDMETHOD.
 
 
