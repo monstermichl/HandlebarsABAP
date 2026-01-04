@@ -19,11 +19,17 @@ jobs:
     name: Lint source
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - name: abaplint
-        uses: abaplint/actions-abaplint@main
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "24"
+      - name: Install abaplint
+        run: npm install @abaplint/cli
+
+      - name: Lint
+        run: npx abaplint .
 
   release:
     name: Create release file
