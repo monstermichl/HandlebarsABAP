@@ -2385,7 +2385,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
             IF lr_block IS NOT BOUND.
               EXIT.
             ENDIF.
-            DATA unused TYPE i.
+
             DATA ls_arg TYPE ts_backend_block_arg.
             READ TABLE lr_block->args INTO ls_arg WITH KEY param-name = lv_part.
 
