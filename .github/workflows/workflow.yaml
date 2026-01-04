@@ -1,9 +1,11 @@
-name: HandlebarsABAP release
+name: HandlebarsABAP workflow
 
 on:
   release:
     types:
       - created
+  push:
+  pull_request:
 
 permissions:
   contents: write
@@ -13,7 +15,17 @@ env:
   RELEASE_CLASS_FILE: ZCL_HANDLEBARS_ABAP.abap
 
 jobs:
-  build:
+  lint:
+    name: Lint source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: abaplint
+        uses: abaplint/actions-abaplint@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release:
     name: Create release file
     if: ${{ github.event_name == 'release' }}
     runs-on: ubuntu-latest
