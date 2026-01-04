@@ -1178,7 +1178,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         ls_placeholder-offset     = lv_offset.
         ls_placeholder-length     = lv_i - lv_offset.
         ls_placeholder-content    = iv_template_string+lv_start_index(lv_length).
-        ls_placeholder-is_comment = xsdbool( lv_comment_type <> e_comment_type_none ).
+        ls_placeholder-is_comment = COND abap_bool(
+          WHEN lv_comment_type <> e_comment_type_none THEN abap_true
+          ELSE abap_false
+        ).
 
         APPEND ls_placeholder TO rt_placeholders.
 
@@ -1324,8 +1327,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DO.
       DATA(ls_token) = me->parser_peek( ).
 
+      READ TABLE lt_termination_tokens TRANSPORTING NO FIELDS WITH KEY table_line = ls_token-type.
+      
       " Check if the current token is a termination token.
-      IF xsdbool( VALUE #( lt_termination_tokens[ table_line = ls_token-type ] OPTIONAL ) IS NOT INITIAL ) = abap_true.
+      IF sy-subrc = 0.
         EXIT.
       ENDIF.
 
@@ -1562,7 +1567,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     CASE lv_token_type.
       WHEN e_token_type_bool_literal.
-        lr_data = NEW ts_parser_bool_literal( value = xsdbool( lv_value <> c_false ) token = ls_token ).
+        DATA(lv_bool_value) = COND abap_bool(
+          WHEN lv_value <> c_false THEN abap_true
+          ELSE abap_false
+        ).
+        lr_data = NEW ts_parser_bool_literal( value = lv_bool_value token = ls_token ).
 
       WHEN e_token_type_number_literal.
         lr_data = NEW ts_parser_float_literal( value = CONV i( lv_value ) token = ls_token ).
@@ -1579,16 +1588,15 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
           WHEN OTHERS.
             DATA(lt_term_token_types) = it_termination_token_types.
+            DATA(ls_next_token) = me->parser_peek_at( 1 ).
 
             " Make sure EOP is part of termination token list.
             APPEND e_token_type_eop TO lt_term_token_types.
 
-            DATA(ls_next_token) = me->parser_peek_at( 1 ).
-            DATA(lv_next_token_type) = ls_next_token-type.
-            DATA(lv_is_term_token) = VALUE #( lt_term_token_types[ table_line = lv_next_token_type ] OPTIONAL ).
+            READ TABLE lt_term_token_types TRANSPORTING NO FIELDS WITH KEY table_line = ls_next_token-type.
 
             " If the next token is not in termination token list, it's an inline-helper.
-            IF ls_next_token-type <> lv_is_term_token.
+            IF sy-subrc <> 0.
               ls_result = me->parser_eval_inline_helper( lt_term_token_types ).
             ELSE.
               ls_result = me->parser_eval_path( ).
@@ -1683,9 +1691,14 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
+    DATA(lv_is_identifier) = COND abap_bool(
+      WHEN lines( lt_collected_parts ) = 1 AND lt_collected_parts[ 1 ] <> c_relative THEN abap_true
+      ELSE abap_false
+    ).
+
     rs_result-stmt = NEW ts_parser_path(
       parts         = lt_collected_parts
-      is_identifier = xsdbool( lines( lt_collected_parts ) = 1 AND lt_collected_parts[ 1 ] <> c_relative )
+      is_identifier = lv_is_identifier
       token         = ls_token
     ).
   ENDMETHOD.
@@ -1730,9 +1743,9 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     DO.
       DATA(ls_token) = me->parser_peek( ).
-      DATA(lv_found_type) = VALUE #( lt_termination_token_types[ table_line = ls_token-type ] OPTIONAL ).
+      READ TABLE lt_termination_token_types TRANSPORTING NO FIELDS WITH KEY table_line = ls_token-type.
 
-      IF lv_found_type IS NOT INITIAL.
+      IF sy-subrc = 0.
         EXIT.
       ENDIF.
 
@@ -2007,7 +2020,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         " Nothing to do.
     ENDTRY.
 
-    DATA(lv_is_block) = xsdbool( lr_block IS BOUND ).
+    DATA(lv_is_block) = COND abap_bool(
+      WHEN lr_block IS BOUND THEN abap_true
+      ELSE abap_false
+    ).
 
     " Push current block to stack for context information...
     IF lv_is_block = abap_true.
@@ -2087,7 +2103,12 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         lv_index = lv_index + 1.
       ENDLOOP.
 
-      ls_data = VALUE #( lt_data[ 1 ] OPTIONAL ).
+      READ TABLE lt_data INTO ls_data INDEX 1.
+
+      " Clear passed data if index 1 doesn't exist.
+      IF sy-subrc <> 0.
+        CLEAR ls_data.
+      ENDIF.
 
       rs_result = me->backend_eval_body(
         ir_block = ls_body
@@ -2115,11 +2136,14 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(lv_condition_is_true) = xsdbool( ls_truthy_result-truthy = abap_true ).
+    DATA(lv_condition_is_true) = ls_truthy_result-truthy.
 
     " If unless, reverse the condition result.
     IF iv_name = c_unless.
-      lv_condition_is_true = xsdbool( lv_condition_is_true = abap_false ).
+      lv_condition_is_true = COND abap_bool(
+        WHEN lv_condition_is_true = abap_false THEN abap_true
+        ELSE abap_false
+      ).
     ENDIF.
 
     IF lv_condition_is_true = abap_true.
@@ -2362,9 +2386,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
               EXIT.
             ENDIF.
 
-            DATA(ls_arg) = VALUE #( lr_block->args[ param-name = lv_part ] OPTIONAL ).
+            DATA ls_arg TYPE ts_backend_block_arg.
+            READ TABLE lr_block->args INTO ls_arg WITH KEY param-name = lv_part.
 
-            IF ls_arg IS NOT INITIAL.
+            IF sy-subrc = 0.
               lr_this ?= ls_arg-data.
 
               " Try to evaluate if found data is a literal.
@@ -2545,19 +2570,28 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     CASE lv_kind.
       WHEN e_backend_data_kind_simple.
         ASSIGN ir_data->* TO FIELD-SYMBOL(<bool>).
-        lv_truthy = xsdbool( <bool> <> ' ' ).
+        lv_truthy = COND abap_bool(
+          WHEN <bool> <> ' ' THEN abap_true
+          ELSE abap_false
+        ).
 
       WHEN e_backend_data_kind_struct.
         DATA(lo_struct_desc) = CAST cl_abap_structdescr( cl_abap_typedescr=>describe_by_data_ref( ir_data ) ).
         DATA(lt_components) = lo_struct_desc->get_components( ).
 
-        lv_truthy = xsdbool( lines( lt_components ) > 0 ).
+        lv_truthy = COND abap_bool(
+          WHEN lines( lt_components ) > 0 THEN abap_true
+          ELSE abap_false
+        ).
 
       WHEN e_backend_data_kind_table.
         FIELD-SYMBOLS: <table> TYPE ANY TABLE.
 
         ASSIGN ir_data->* TO <table>.
-        lv_truthy = xsdbool( lines( <table> ) > 0 ).
+        lv_truthy = COND abap_bool(
+          WHEN lines( <table> ) > 0 THEN abap_true
+          ELSE abap_false
+        ).
 
       WHEN OTHERS.
         rs_result-error = |Unknown data kind { lv_kind }|.
