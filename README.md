@@ -120,7 +120,7 @@ HandlebarsABAP can be installed by using the latest release-tag via [abapGit](ht
 ```
 
 ### Custom (block) helpers
-It's possible to write and configure custom helpers like in HandlebarsJS but it works a bit differently. In HandlebarsJS a *fn*- and a *reverse*-function is passed to the helper which then need to be called to render either the block-content or the else-content. Since ABAP does not allow to pass functions to other functions or methods, the corresponding functions are part of the *zbc_handlebars_abap* class. The instance of the class gets passed to the helper and the helper needs to either invoke *fn* or *reverse* on that instance. The first argument that's passed to the corresponding function is considered the new context within the block (*this*).
+It's possible to write and configure custom helpers like in HandlebarsJS but it works a bit differently. In HandlebarsJS a *fn*- and a *reverse*-function is passed to the helper which then need to be called to render either the block-content or the else-content. Since ABAP does not allow to pass functions to other functions or methods, the corresponding functions are part of the *zcl_handlebars_abap* class. The instance of the class gets passed to the helper and the helper needs to either invoke *fn* or *reverse* on that instance. The first argument that's passed to the corresponding function is considered the new context within the block (*this*).
 
 ```abap
 METHOD hello.
