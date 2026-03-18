@@ -169,6 +169,12 @@ CLASS zcl_handlebars_abap DEFINITION
 
     DATA: mt_helpers TYPE tt_helpers.
 
+    CLASS-METHODS try_to_load_template
+      IMPORTING
+        iv_name                   TYPE string
+      RETURNING
+        VALUE(rv_template_string) TYPE string.
+
     CLASS-METHODS get_instance
       RETURNING
         VALUE(rr_instance) TYPE REF TO zcl_handlebars_abap.
@@ -680,32 +686,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DATA(lv_template_string) = iv_template_string.
     DATA(lo_template) = NEW zcl_handlebars_abap( abap_true ).
 
-    " First, try to load stored HTML template.
-    IF strlen( lv_template_string ) <= 40.
-      DATA: lt_html_table  TYPE swww_t_html_table,
-            lt_merge_table TYPE swww_t_merge_table.
-
-      DATA(lv_template_name) = CONV swww_t_template_name( lv_template_string ).
-
-      CALL FUNCTION 'WWW_HTML_MERGER'
-        EXPORTING
-          template           = lv_template_name
-        IMPORTING
-          html_table         = lt_html_table
-        CHANGING
-          merge_table        = lt_merge_table
-        EXCEPTIONS
-          template_not_found = 1.
-
-      " If loading the template was successful, replace iv_template_string with the string from the loaded template.
-      IF sy-subrc = 0.
-        CLEAR lv_template_string.
-
-        LOOP AT lt_html_table INTO DATA(ls_html_row).
-          lv_template_string = |{ lv_template_string }{ CONV string( ls_html_row-line ) }|.
-        ENDLOOP.
-      ENDIF.
-    ENDIF.
+    " First, try to load stored HTML template from SMW0.
+    lv_template_string = zcl_handlebars_abap=>try_to_load_template( lv_template_string ).
 
     " Tokenize template string (disassemble it into usable chunks).
     DATA(lv_error) = lo_template->tokenizer_tokenize( lv_template_string ).
@@ -805,6 +787,63 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
       " Augment passed error with token position.
       rv_error = me->backend_build_error( iv_error = iv_error is_token = ls_token ).
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD try_to_load_template.
+    rv_template_string = iv_name.
+
+    IF strlen( iv_name ) <= 40.
+      DATA: lt_types   TYPE string_table,
+            ls_datatab TYPE wwwdatatab.
+
+      " Add WWWDATA types based on priority (binary data preferred).
+      APPEND 'MI' TO lt_types.
+      APPEND 'HT' TO lt_types.
+
+      ls_datatab-objid = iv_name.
+
+      LOOP AT lt_types INTO DATA(lv_type).
+        DATA: lt_w3html TYPE TABLE OF w3html,
+              lt_w3mime TYPE TABLE OF w3mime.
+
+        CLEAR lt_w3html.
+        CLEAR lt_w3mime.
+
+        ls_datatab-relid = lv_type.
+
+        CALL FUNCTION 'WWWDATA_IMPORT'
+          EXPORTING
+            key               = ls_datatab
+          TABLES
+            html              = lt_w3html
+            mime              = lt_w3mime
+          EXCEPTIONS
+            wrong_object_type = 1
+            import_error      = 2
+            OTHERS            = 3.
+
+        " If loading the template was successful, use based on if it's binary or HTML data.
+        IF lt_w3mime[] IS NOT INITIAL.
+
+          " Convert binary string to UTF-8 string.
+          DATA(lv_xstring) = cl_bcs_convert=>solix_to_xstring( lt_w3mime ).
+          CLEAR rv_template_string.
+
+          cl_abap_conv_in_ce=>create( input = lv_xstring encoding = 'UTF-8' )->read( IMPORTING data = rv_template_string ).
+        ELSEIF lt_w3html[] IS NOT INITIAL.
+          TRY.
+              rv_template_string = cl_bcs_convert=>raw_to_string( lt_w3html ).
+            CATCH cx_root.
+              " Nothing to do. Template string stays as it is.
+          ENDTRY.
+        ELSE.
+          CONTINUE.
+        ENDIF.
+
+        EXIT.
+      ENDLOOP.
     ENDIF.
   ENDMETHOD.
 
@@ -1328,7 +1367,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       DATA(ls_token) = me->parser_peek( ).
 
       READ TABLE lt_termination_tokens TRANSPORTING NO FIELDS WITH KEY table_line = ls_token-type.
-      
+
       " Check if the current token is a termination token.
       IF sy-subrc = 0.
         EXIT.
@@ -2191,7 +2230,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
               ASSIGN lr_iterable->* TO FIELD-SYMBOL(<structure>).
               ASSIGN COMPONENT lv_field_name OF STRUCTURE <structure> TO FIELD-SYMBOL(<field>).
 
-              DATA lr_field TYPE ref to data.
+              DATA lr_field TYPE REF TO data.
 
               GET REFERENCE OF <field> INTO lr_field.
               GET REFERENCE OF lv_field_name INTO DATA(lr_key).
