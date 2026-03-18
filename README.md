@@ -13,7 +13,7 @@ To quote the [Handlebars documentation](https://handlebarsjs.com/guide/):
 ## Why Handlebars for ABAP?
 Even though the *WWW_HTML_MERGER* function module exists to load and merge HTML templates with simple data, it is very limited in its use. Handlebars on the other hand allows for building highly flexible templates and automatically resolves deeply nested structures and tables, making it easy to quickly build extremely customizable HTMLs/texts based on its input data.
 
-To compile a Handlebars template, simply pass it to the static *compile*-method and call the returned instance's *template*-method to fill the template with the provided data. *HINT*: If a template-name (transaction SMW0) gets passed to *compile*, the template gets loaded instead.
+To compile a Handlebars template, simply pass it to the static *compile*-method and call the returned instance's *template*-method to fill the template with the provided data.
 
 ```abap
 TYPES: BEGIN OF ts_title,
@@ -49,6 +49,9 @@ WRITE / ls_template_result-text. " Prints 'Ing. Peter Parker'.
 
 ## Installation
 HandlebarsABAP can be installed by using the latest release-tag via [abapGit](https://docs.abapgit.org/user-guide/projects/online/install.html) or by simply creating a *ZCL_HANDLEBARS_ABAP*-class on the client and pasting the content of the latest *ZCL_HANDLEBARS_ABAP.abap* release file into it.
+
+## Stored templates
+To compile a template stored via transaction SMW0, just pass the template name to compile. It is recommended to store the HTML-template as binary data in SMW0. Not storing it as binary data could lead to a wrong interpretation of language specific letters (e.g. ä, ö, ü, ß, ...). Even though templates stored as HTML are still supported, templates stored as binaries take precedence and are converted to UTF-8.
 
 ## What's supported so far
 ### Fields
