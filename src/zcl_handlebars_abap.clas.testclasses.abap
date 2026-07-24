@@ -5,10 +5,22 @@ CLASS ltcl_handlebars_abap DEFINITION FOR TESTING
   PUBLIC SECTION.
     CLASS-METHODS hello
       IMPORTING
-        io_instance      TYPE REF TO zcl_handlebars_abap
-        iv_name          TYPE string ##NEEDED
         it_args          TYPE zcl_handlebars_abap=>tt_data
-        ir_data          TYPE zcl_handlebars_abap=>tr_data ##NEEDED
+        is_options       TYPE zcl_handlebars_abap=>ts_options ##NEEDED
+      RETURNING
+        VALUE(rs_result) TYPE zcl_handlebars_abap=>ts_text_result.
+
+    CLASS-METHODS arguments_check
+      IMPORTING
+        it_args          TYPE zcl_handlebars_abap=>tt_data
+        is_options       TYPE zcl_handlebars_abap=>ts_options ##NEEDED
+      RETURNING
+        VALUE(rs_result) TYPE zcl_handlebars_abap=>ts_text_result.
+
+    CLASS-METHODS inline_helper
+      IMPORTING
+        it_args          TYPE zcl_handlebars_abap=>tt_data
+        is_options       TYPE zcl_handlebars_abap=>ts_options ##NEEDED
       RETURNING
         VALUE(rs_result) TYPE zcl_handlebars_abap=>ts_text_result.
 
@@ -30,6 +42,8 @@ CLASS ltcl_handlebars_abap DEFINITION FOR TESTING
 
     METHODS: template_structure_success FOR TESTING.
     METHODS: template_table_success FOR TESTING.
+    METHODS: template_args_check_success FOR TESTING.
+    METHODS: template_inline_check_success FOR TESTING.
     METHODS: template_custom_helper_success FOR TESTING.
     METHODS: template_else_on_undef_success FOR TESTING.
     METHODS: template_resolve_order_success FOR TESTING.
@@ -39,10 +53,50 @@ ENDCLASS.
 
 
 CLASS ltcl_handlebars_abap IMPLEMENTATION.
+
   METHOD hello.
     ASSIGN it_args[ 1 ]->* TO FIELD-SYMBOL(<name>).
+    DATA lv_title TYPE string.
 
-    rs_result = io_instance->fn( NEW string( |Hello { <name> } | ) ).
+    READ TABLE is_options-hashes WITH KEY key = 'title' INTO DATA(ls_key_value).
+
+    IF ls_key_value IS NOT INITIAL.
+      DATA ls_title TYPE ts_title.
+
+      ls_title = CONV ts_title( ls_key_value-data->* ).
+
+      IF ls_title IS NOT INITIAL AND ls_title-front IS NOT INITIAL.
+        lv_title = |{ ls_title-front } |.
+      ENDIF.
+    ENDIF.
+
+    rs_result = is_options-instance->fn( NEW string( |Hello { lv_title }{ <name> } | ) ).
+  ENDMETHOD.
+
+
+  METHOD arguments_check.
+    LOOP AT it_args INTO DATA(lr_arg).
+      rs_result-text = |{ rs_result-text } { lr_arg->* }|.
+    ENDLOOP.
+
+    LOOP AT is_options-hashes INTO DATA(ls_hash).
+      rs_result-text = |{ rs_result-text } { ls_hash-key }={ ls_hash-data->* }|.
+    ENDLOOP.
+
+    CONDENSE rs_result-text.
+  ENDMETHOD.
+
+
+  METHOD inline_helper.
+    LOOP AT it_args INTO DATA(lr_arg).
+      rs_result-text = |{ rs_result-text } { lr_arg->* }|.
+    ENDLOOP.
+
+    LOOP AT is_options-hashes INTO DATA(ls_hash).
+      rs_result-text = |{ rs_result-text } { ls_hash-key }={ ls_hash-data->* }|.
+    ENDLOOP.
+
+    CONDENSE rs_result-text.
   ENDMETHOD.
 
 
@@ -111,7 +165,7 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
 
     DATA(ls_compile_result) = zcl_handlebars_abap=>compile(
       '{{#each this as |person|}}' &
-        '{{#hello person.firstName}}' &
+        '{{#hello person.firstName title=person.title}}' &
           '{{this}}' &
         '{{/hello}}' &
       '{{/each}}'
@@ -119,7 +173,7 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_compile_result-error ).
 
     DATA(lr_people) = VALUE tt_people(
-      ( firstName = 'Peter'  )
+      ( firstName = 'Peter' title = VALUE #( front = 'Ing.' )  )
       ( firstName = 'Helene' )
     ).
     DATA(ls_template_result) = ls_compile_result-instance->template( lr_people ).
@@ -129,7 +183,52 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
     CONDENSE ls_template_result-text.
 
     cl_abap_unit_assert=>assert_equals(
-      exp = 'Hello Peter Hello Helene'
+      exp = 'Hello Ing. Peter Hello Helene'
+      act = ls_template_result-text
+    ).
+  ENDMETHOD.
+
+
+  METHOD template_args_check_success.
+    zcl_handlebars_abap=>register_helper_static( iv_name = 'arguments_check' ir_helper = NEW zcl_handlebars_abap=>ts_class_helper( class_name = 'ltcl_handlebars_abap' method_name = 'arguments_check' ) ).
+
+    DATA(ls_compile_result) = zcl_handlebars_abap=>compile(
+      '{{#arguments_check "literal" 123 true false null undefined s="s" i=123 b=true u=undefined n=null}}' &
+      '{{/arguments_check}}'
+    ).
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_compile_result-error ).
+
+    DATA(ls_template_result) = ls_compile_result-instance->template( ).
+
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
+
+    CONDENSE ls_template_result-text.
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = 'literal 123 X s=s i=123 b=X u= n='
+      act = ls_template_result-text
+    ).
+  ENDMETHOD.
+
+
+  METHOD template_inline_check_success.
+    zcl_handlebars_abap=>register_helper_static( iv_name = 'arguments_check' ir_helper = NEW zcl_handlebars_abap=>ts_class_helper( class_name = 'ltcl_handlebars_abap' method_name = 'arguments_check' ) ).
+    zcl_handlebars_abap=>register_helper_static( iv_name = 'inline_helper'   ir_helper = NEW zcl_handlebars_abap=>ts_class_helper( class_name = 'ltcl_handlebars_abap' method_name = 'inline_helper'   ) ).
+
+    DATA(ls_compile_result) = zcl_handlebars_abap=>compile(
+      '{{#arguments_check (inline_helper true s="literal")}}' &
+      '{{/arguments_check}}'
+    ).
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_compile_result-error ).
+
+    DATA(ls_template_result) = ls_compile_result-instance->template( ).
+
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
+
+    CONDENSE ls_template_result-text.
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = 'X s=literal'
       act = ls_template_result-text
     ).
   ENDMETHOD.
@@ -248,4 +347,5 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_equals( exp = 'template_name' act = ls_template_result-text ).
   ENDMETHOD.
+
 ENDCLASS.
