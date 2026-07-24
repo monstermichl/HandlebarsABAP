@@ -63,7 +63,8 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
     IF ls_key_value IS NOT INITIAL.
       DATA ls_title TYPE ts_title.
 
-      ls_title = CONV ts_title( ls_key_value-data->* ).
+      ASSIGN ls_key_value-data->* TO FIELD-SYMBOL(<title>).
+      ls_title = CONV ts_title( <title> ).
 
       IF ls_title IS NOT INITIAL AND ls_title-front IS NOT INITIAL.
         lv_title = |{ ls_title-front } |.
