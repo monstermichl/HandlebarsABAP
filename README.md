@@ -134,7 +134,7 @@ ENDMETHOD.
 ```
 
 #### How to handle data
-Each helper function receives an *it_args* table as argument. This table contains references to the data passed, which could be a struct, a table or something simple like bool, int, string...
+Each helper function receives an *it_args* table as argument. This table contains references to the data passed, which could be a struct, a table or something simple like bool, int, string... The same holds true for the hash arguments passed via *is_options-hashes*.
 
 It's the implementer's responsibility to handle the data correctly. To get a feeling how to implement helpers it can be useful to have a look into *backend_eval_cond_helper*/*backend_eval_each_helper*/*backend_eval_with_helper*.
 
@@ -153,11 +153,13 @@ register_helper( iv_name = 'hello' ir_helper = NEW zcl_handlebars_abap=>ts_objec
 ```
 
 #### Function/Method signatures
-Helper functions/methods get passed the following properties:
-- instance: The instance of the currently processed object on which to call *fn*/*reverse*.
-- name: The name of the registered helper. This can be useful if method gets registered for different helper names.
+Helper functions/methods get passed the following properties **IMPORTANT**: Be aware of the breaking change introduced in v1.0.0 (https://github.com/monstermichl/HandlebarsABAP/issues/8#issuecomment-5072874511).
 - args: The arguments passed to the helper.
-- data: The current data of the block.
+- options:
+  - instance: The instance of the currently processed object on which to call *fn*/*reverse*.
+  - name: The name of the registered helper. This can be useful if method gets registered for different helper names.
+  - hashes: The hash arguments passed to the helper.
+  - data: The current data of the block.
 
 ##### (Class-)methods
 This is the prefered way to implement helpers as it goes hand in hand with the modern approach of ABAP programming. Both static and object methods must implement the following signature to be callable.
@@ -165,10 +167,8 @@ This is the prefered way to implement helpers as it goes hand in hand with the m
 ```abap
 METHODS helper_method
   IMPORTING
-    io_instance      TYPE zcl_handlebars_abap
-    iv_name          TYPE string
     it_args          TYPE zcl_handlebars_abap=>tt_data
-    ir_data          TYPE zcl_handlebars_abap=>tr_data
+    is_options       TYPE zcl_handlebars_abap=>ts_options
   RETURNING
     VALUE(rs_result) TYPE zcl_handlebars_abap=>ts_text_result.
 ```
@@ -191,12 +191,10 @@ A function module must implement the following signature to be callable.
 ```abap
 FUNCTION helper_method
   IMPORTING
-    io_instance TYPE zcl_handlebars_abap
-    iv_name     TYPE string
-    it_args     TYPE zcl_handlebars_abap=>tt_data
-    ir_data     TYPE zcl_handlebars_abap=>tr_data
+    it_args    TYPE zcl_handlebars_abap=>tt_data
+    is_options TYPE zcl_handlebars_abap=>ts_options
   EXPORTING
-    es_result   TYPE zcl_handlebars_abap=>ts_text_result.
+    es_result  TYPE zcl_handlebars_abap=>ts_text_result.
 ```
 
 To register a function module, use the *ts_func_module_helper* structure. E.g.
@@ -211,12 +209,10 @@ A form must implement the following signature to be callable.
 ```abap
 FORM helper_method
   USING
-    io_instance TYPE zcl_handlebars_abap
-    iv_name     TYPE string
-    it_args     TYPE zcl_handlebars_abap=>tt_data
-    ir_data     TYPE zcl_handlebars_abap=>tr_data
+    it_args    TYPE zcl_handlebars_abap=>tt_data
+    is_options TYPE zcl_handlebars_abap=>ts_options
   CHANGING
-    cs_result   TYPE zcl_handlebars_abap=>ts_text_result.
+    cs_result  TYPE zcl_handlebars_abap=>ts_text_result.
 ```
 
 To register a form, use the *ts_form_helper* structure. E.g.
