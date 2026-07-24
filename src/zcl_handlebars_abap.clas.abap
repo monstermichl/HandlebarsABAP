@@ -1119,7 +1119,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
           " Try to find characters.
           LOOP AT lt_char_mappings INTO DATA(ls_mapping).
-            FIND PCRE |^({ ls_mapping-pattern })| IN lv_subcontent RESULTS ls_match.
+            FIND REGEX |^({ ls_mapping-pattern })| IN lv_subcontent RESULTS ls_match.
 
             IF sy-subrc = 0.
               ls_match_mapping = VALUE #(
@@ -1137,7 +1137,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
             LOOP AT lt_keyword_mappings INTO ls_mapping.
               DATA(lv_pattern) = |^({ ls_mapping-pattern })(?=\\W\|$)|.
 
-              FIND PCRE lv_pattern IN lv_subcontent RESULTS ls_match.
+              FIND REGEX lv_pattern IN lv_subcontent RESULTS ls_match.
 
               IF sy-subrc = 0.
                 ls_match_mapping = VALUE #(
@@ -1194,11 +1194,17 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
             " If path was found evaluate if it's a hash-argument.
           WHEN e_token_type_path.
             " Make sure it's just a single word.
-            FIND PCRE '\w+' IN ls_temp_token-value.
+            FIND REGEX '\w+' IN ls_temp_token-value.
 
             IF sy-subrc = 0.
-              DATA(ls_next_token) = VALUE #( lt_temporary_tokens[ lv_temp_token_index + 1 ] OPTIONAL ).
-              DATA(ls_next_after_next_token) = VALUE #( lt_temporary_tokens[ lv_temp_token_index + 2 ] OPTIONAL ).
+              DATA: ls_next_token            TYPE ts_tokenizer_token,
+                    ls_next_after_next_token TYPE ts_tokenizer_token.
+
+              CLEAR ls_next_token.
+              CLEAR ls_next_after_next_token.
+
+              READ TABLE lt_temporary_tokens INDEX lv_temp_token_index + 1 INTO ls_next_token.
+              READ TABLE lt_temporary_tokens INDEX lv_temp_token_index + 2 INTO ls_next_after_next_token.
 
               " If next token is equal and afterwards is no space, it's most probably a hash argument.
               IF (
@@ -2148,7 +2154,9 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         RETURN.
     ENDCASE.
 
-    ASSIGN COMPONENT 'VALUE' OF STRUCTURE lr_data->* TO FIELD-SYMBOL(<value>).
+    ASSIGN lr_data->* TO FIELD-SYMBOL(<structure>).
+    ASSIGN COMPONENT 'VALUE' OF STRUCTURE <structure> TO FIELD-SYMBOL(<value>).
+
     DATA(lo_descriptor) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_data( <value> ) ).
 
     DATA lr_literal_value TYPE REF TO data.
@@ -2887,13 +2895,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
             DATA(lv_form_name) = lr_form_helper_config->form_name.
             DATA(lv_report_name) = lr_form_helper_config->report_name.
+            DATA(lt_args) = it_args.
 
             TRANSLATE lv_form_name TO UPPER CASE.
             TRANSLATE lv_report_name TO UPPER CASE.
-
-            DATA(lv_name) = iv_name.
-            DATA(lt_args) = it_args.
-            DATA(lr_data) = ir_data.
 
             PERFORM (lv_form_name) IN PROGRAM (lv_report_name)
               USING
