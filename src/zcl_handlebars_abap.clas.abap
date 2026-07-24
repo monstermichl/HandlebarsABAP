@@ -2005,7 +2005,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       WHEN 'ts_parser_string_literal'.
         lr_data = ir_stmt.
 
-      WHEN 'ts_parser_null_literal' OR 'ts_parser_undefined'.
+      WHEN 'ts_parser_null_literal' OR 'ts_parser_undefined_literal'.
         lr_data = ir_stmt.
 
       WHEN OTHERS.
@@ -2015,8 +2015,16 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         RETURN.
     ENDCASE.
 
-    rs_result-data = lr_data.
-    rs_result-kind = me->backend_get_data_kind( lr_data ).
+    ASSIGN COMPONENT 'VALUE' OF STRUCTURE lr_data->* TO FIELD-SYMBOL(<value>).
+    DATA(lo_descriptor) = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_data( <value> ) ).
+
+    DATA lr_literal_value TYPE REF TO data.
+    CREATE DATA lr_literal_value TYPE HANDLE lo_descriptor.
+
+    lr_literal_value->* = <value>.
+
+    rs_result-data = lr_literal_value.
+    rs_result-kind = me->backend_get_data_kind( lr_literal_value ).
   ENDMETHOD.
 
 
