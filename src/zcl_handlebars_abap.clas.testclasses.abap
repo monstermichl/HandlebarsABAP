@@ -76,11 +76,13 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
 
   METHOD arguments_check.
     LOOP AT it_args INTO DATA(lr_arg).
-      rs_result-text = |{ rs_result-text } { lr_arg->* }|.
+      ASSIGN lr_arg->* TO FIELD-SYMBOL(<arg>).
+      rs_result-text = |{ rs_result-text } { <arg> }|.
     ENDLOOP.
 
     LOOP AT is_options-hashes INTO DATA(ls_hash).
-      rs_result-text = |{ rs_result-text } { ls_hash-key }={ ls_hash-data->* }|.
+      ASSIGN ls_hash-data->* TO FIELD-SYMBOL(<hash_value>).
+      rs_result-text = |{ rs_result-text } { ls_hash-key }={ <hash_value> }|.
     ENDLOOP.
 
     CONDENSE rs_result-text.
@@ -89,11 +91,13 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
 
   METHOD inline_helper.
     LOOP AT it_args INTO DATA(lr_arg).
-      rs_result-text = |{ rs_result-text } { lr_arg->* }|.
+      ASSIGN lr_arg->* TO FIELD-SYMBOL(<arg>).
+      rs_result-text = |{ rs_result-text } { <arg> }|.
     ENDLOOP.
 
     LOOP AT is_options-hashes INTO DATA(ls_hash).
-      rs_result-text = |{ rs_result-text } { ls_hash-key }={ ls_hash-data->* }|.
+      ASSIGN ls_hash-data->* TO FIELD-SYMBOL(<hash_value>).
+      rs_result-text = |{ rs_result-text } { ls_hash-key }={ <hash_value> }|.
     ENDLOOP.
 
     CONDENSE rs_result-text.
