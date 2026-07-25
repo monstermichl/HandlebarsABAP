@@ -68,6 +68,8 @@ CLASS zcl_handlebars_abap DEFINITION
              data     TYPE tr_data,
            END OF ts_options.
 
+    CONSTANTS: c_version TYPE string VALUE '1.0.1'.
+
     "! Compiles the passed Handlebars template.
     "!
     "! @parameter iv_template_string | Handebars template string.
