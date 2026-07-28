@@ -42,6 +42,7 @@ CLASS ltcl_handlebars_abap DEFINITION FOR TESTING
 
     METHODS: template_structure_success FOR TESTING.
     METHODS: template_table_success FOR TESTING.
+    METHODS: template_partial_success FOR TESTING.
     METHODS: template_args_check_success FOR TESTING.
     METHODS: template_inline_check_success FOR TESTING.
     METHODS: template_custom_helper_success FOR TESTING.
@@ -189,6 +190,30 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_equals(
       exp = 'Hello Ing. Peter Hello Helene'
+      act = ls_template_result-text
+    ).
+  ENDMETHOD.
+
+
+  METHOD template_partial_success.
+    zcl_handlebars_abap=>register_partial_static( iv_name = 'partial' iv_template_string = '{{title}} {{firstname}} {{lastname}}' ).
+
+    DATA(ls_compile_result) = zcl_handlebars_abap=>compile(
+      '{{> partial . title="Mr."}}'
+    ).
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_compile_result-error ).
+
+    DATA(ls_template_result) = ls_compile_result-instance->template( VALUE ts_person(
+      firstname = 'Marc'
+      lastname = 'Cucurella'
+    ) ).
+
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
+
+    CONDENSE ls_template_result-text.
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = 'Mr. Marc Cucurella'
       act = ls_template_result-text
     ).
   ENDMETHOD.
