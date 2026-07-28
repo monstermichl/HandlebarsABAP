@@ -44,6 +44,12 @@ CLASS zcl_handlebars_abap DEFINITION
              helper TYPE REF TO data,
            END OF ts_helper.
 
+    TYPES: BEGIN OF ts_partial,
+             name            TYPE string,
+             template_string TYPE string,
+             partial         TYPE REF TO zcl_handlebars_abap,
+           END OF ts_partial.
+
     TYPES: BEGIN OF ts_is_truthy_result,
              truthy TYPE abap_bool,
              error  TYPE string,
@@ -79,6 +85,13 @@ CLASS zcl_handlebars_abap DEFINITION
       RETURNING
         VALUE(rs_result)          TYPE ts_compile_result.
 
+    CLASS-METHODS register_partial_static
+      IMPORTING
+        iv_name            TYPE string
+        iv_template_string TYPE string
+      RETURNING
+        VALUE(rv_error)    TYPE string.
+
     "! Registers a helper method globally. The passed method must implement the following signature.
     "!
     "! METHODS helper_method
@@ -96,6 +109,13 @@ CLASS zcl_handlebars_abap DEFINITION
         ir_helper       TYPE any
       RETURNING
         VALUE(rv_error) TYPE string.
+
+    METHODS register_partial
+      IMPORTING
+        iv_name            TYPE string
+        iv_template_string TYPE string
+      RETURNING
+        VALUE(rv_error)    TYPE string.
 
     "! Registers a helper method. The method must implement the following signature.
     "!
@@ -166,7 +186,13 @@ CLASS zcl_handlebars_abap DEFINITION
   PROTECTED SECTION.
 
   PRIVATE SECTION.
+    TYPES: tt_partials TYPE TABLE OF ts_partial.
     TYPES: tt_helpers TYPE TABLE OF ts_helper.
+
+    TYPES: BEGIN OF ts_find_partial_result,
+             partial TYPE REF TO ts_partial,
+             error   TYPE string,
+           END OF ts_find_partial_result.
 
     TYPES: BEGIN OF ts_find_helper_result,
              helper TYPE REF TO ts_helper,
@@ -180,7 +206,15 @@ CLASS zcl_handlebars_abap DEFINITION
 
     CLASS-DATA: cr_helper_instance TYPE REF TO zcl_handlebars_abap.
 
-    DATA: mt_helpers TYPE tt_helpers.
+    DATA: mt_partials TYPE tt_partials,
+          mt_helpers  TYPE tt_helpers.
+
+    CLASS-METHODS compile_internal
+      IMPORTING
+        VALUE(iv_template_string) TYPE string
+        VALUE(iv_import_static)   TYPE abap_bool
+      RETURNING
+        VALUE(rs_result)          TYPE ts_compile_result.
 
     CLASS-METHODS try_to_load_template
       IMPORTING
@@ -192,6 +226,14 @@ CLASS zcl_handlebars_abap DEFINITION
       RETURNING
         VALUE(rr_instance) TYPE REF TO zcl_handlebars_abap.
 
+    CLASS-METHODS register_partial_internal
+      IMPORTING
+        ir_instance        TYPE REF TO zcl_handlebars_abap
+        iv_name            TYPE string
+        iv_template_string TYPE string
+      RETURNING
+        VALUE(rv_error)    TYPE string.
+
     CLASS-METHODS register_helper_internal
       IMPORTING
         ir_instance     TYPE REF TO zcl_handlebars_abap
@@ -199,6 +241,13 @@ CLASS zcl_handlebars_abap DEFINITION
         ir_helper       TYPE any
       RETURNING
         VALUE(rv_error) TYPE string.
+
+    CLASS-METHODS find_partial
+      IMPORTING
+        ir_instance      TYPE REF TO zcl_handlebars_abap
+        iv_name          TYPE string
+      RETURNING
+        VALUE(rs_result) TYPE ts_find_partial_result.
 
     CLASS-METHODS find_helper
       IMPORTING
@@ -221,7 +270,8 @@ CLASS zcl_handlebars_abap DEFINITION
 
     METHODS constructor
       IMPORTING
-        iv_import_static_helpers TYPE abap_bool.
+        iv_import_static_helpers  TYPE abap_bool
+        iv_import_static_partials TYPE abap_bool.
 
     " .:: Tokenizer section.
     TYPES: e_tokenizer_token_type TYPE string.
@@ -234,6 +284,7 @@ CLASS zcl_handlebars_abap DEFINITION
                e_token_type_c_round_bracket TYPE e_tokenizer_token_type VALUE 'closing round bracket',
                e_token_type_pipe            TYPE e_tokenizer_token_type VALUE 'pipe',
                e_token_type_at              TYPE e_tokenizer_token_type VALUE 'at',
+               e_token_type_greater         TYPE e_tokenizer_token_type VALUE 'greater',
                e_token_type_equal           TYPE e_tokenizer_token_type VALUE 'equal',
                e_token_type_else            TYPE e_tokenizer_token_type VALUE 'else',
                e_token_type_as              TYPE e_tokenizer_token_type VALUE 'as',
@@ -372,6 +423,13 @@ CLASS zcl_handlebars_abap DEFINITION
 
     TYPES: tt_parser_hashes TYPE STANDARD TABLE OF ts_parser_hash WITH KEY key.
 
+    TYPES: BEGIN OF ts_parser_partial,
+             name    TYPE tr_parser_expression,
+             context TYPE tr_parser_expression,
+             hashes  TYPE tt_parser_hashes.
+             INCLUDE TYPE ts_parser_stmt_base.
+    TYPES: END OF ts_parser_partial.
+
     TYPES: BEGIN OF ts_parser_helper,
              name   TYPE string,
              args   TYPE tt_parser_expressions,
@@ -465,6 +523,10 @@ CLASS zcl_handlebars_abap DEFINITION
         VALUE(rs_results)          TYPE ts_parser_eval_results.
 
     METHODS parser_eval_template
+      RETURNING
+        VALUE(rs_result) TYPE ts_parser_eval_result.
+
+    METHODS parser_eval_partial
       RETURNING
         VALUE(rs_result) TYPE ts_parser_eval_result.
 
@@ -596,6 +658,13 @@ CLASS zcl_handlebars_abap DEFINITION
       RETURNING
         VALUE(rs_result) TYPE ts_backend_eval_expr_result.
 
+    METHODS backend_eval_partial
+      IMPORTING
+        ir_partial       TYPE REF TO ts_parser_partial
+        ir_data          TYPE tr_data
+      RETURNING
+        VALUE(rs_result) TYPE ts_text_result.
+
     METHODS backend_eval_helper
       IMPORTING
         ir_helper        TYPE REF TO data
@@ -704,29 +773,19 @@ ENDCLASS.
 CLASS zcl_handlebars_abap IMPLEMENTATION.
 
   METHOD compile.
-    DATA(lv_template_string) = iv_template_string.
-    DATA(lo_template) = NEW zcl_handlebars_abap( abap_true ).
+    rs_result = zcl_handlebars_abap=>compile_internal(
+      iv_template_string = iv_template_string
+      iv_import_static   = abap_true
+    ).
+  ENDMETHOD.
 
-    " First, try to load stored HTML template from SMW0.
-    lv_template_string = zcl_handlebars_abap=>try_to_load_template( lv_template_string ).
 
-    " Tokenize template string (disassemble it into usable chunks).
-    DATA(lv_error) = lo_template->tokenizer_tokenize( lv_template_string ).
-
-    IF lv_error IS NOT INITIAL.
-      rs_result-error = lv_error.
-      RETURN.
-    ENDIF.
-
-    " Parse tokens and build an AST.
-    lv_error = lo_template->parser_parse( ).
-
-    IF lv_error IS NOT INITIAL.
-      rs_result-error = lv_error.
-      RETURN.
-    ENDIF.
-
-    rs_result-instance = lo_template.
+  METHOD register_partial_static.
+    rv_error = zcl_handlebars_abap=>register_partial_internal(
+      ir_instance        = zcl_handlebars_abap=>get_instance( )
+      iv_name            = iv_name
+      iv_template_string = iv_template_string
+    ).
   ENDMETHOD.
 
 
@@ -735,6 +794,15 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ir_instance = zcl_handlebars_abap=>get_instance( )
       iv_name     = iv_name
       ir_helper   = ir_helper
+    ).
+  ENDMETHOD.
+
+
+  METHOD register_partial.
+    rv_error = zcl_handlebars_abap=>register_partial_internal(
+      ir_instance        = me
+      iv_name            = iv_name
+      iv_template_string = iv_template_string
     ).
   ENDMETHOD.
 
@@ -812,6 +880,36 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD compile_internal.
+    DATA(lv_template_string) = iv_template_string.
+    DATA(lo_template) = NEW zcl_handlebars_abap(
+      iv_import_static_helpers  = iv_import_static
+      iv_import_static_partials = iv_import_static
+    ).
+
+    " First, try to load stored HTML template from SMW0.
+    lv_template_string = zcl_handlebars_abap=>try_to_load_template( lv_template_string ).
+
+    " Tokenize template string (disassemble it into usable chunks).
+    DATA(lv_error) = lo_template->tokenizer_tokenize( lv_template_string ).
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    " Parse tokens and build an AST.
+    lv_error = lo_template->parser_parse( ).
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    rs_result-instance = lo_template.
+  ENDMETHOD.
+
+
   METHOD try_to_load_template.
     rv_template_string = iv_name.
 
@@ -871,10 +969,49 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
   METHOD get_instance.
     IF zcl_handlebars_abap=>cr_helper_instance IS NOT BOUND.
-      zcl_handlebars_abap=>cr_helper_instance = NEW zcl_handlebars_abap( abap_false ).
+      zcl_handlebars_abap=>cr_helper_instance = NEW zcl_handlebars_abap(
+        iv_import_static_helpers  = abap_false
+        iv_import_static_partials = abap_false
+      ).
     ENDIF.
 
     rr_instance = zcl_handlebars_abap=>cr_helper_instance.
+  ENDMETHOD.
+
+
+  METHOD register_partial_internal.
+    IF iv_name IS INITIAL.
+      rv_error = 'No partial name provided'.
+      RETURN.
+    ELSEIF iv_template_string IS INITIAL.
+      rv_error = 'No partial template string provided'.
+      RETURN.
+    ENDIF.
+
+    DATA(ls_partial_result) = zcl_handlebars_abap=>compile_internal(
+      iv_template_string = iv_template_string
+      iv_import_static   = abap_false
+    ).
+    DATA(lv_partial_compile_error) = ls_partial_result-error.
+
+    IF lv_partial_compile_error IS NOT INITIAL.
+      rv_error = lv_partial_compile_error.
+      RETURN.
+    ENDIF.
+
+    DATA(ls_find_partial_result) = zcl_handlebars_abap=>find_partial( ir_instance = ir_instance iv_name = iv_name ).
+    DATA(lr_partial_instance) = ls_partial_result-instance.
+
+    " If a corresponding partial was found, update it.
+    IF ls_find_partial_result-error IS INITIAL.
+      ls_find_partial_result-partial->partial ?= lr_partial_instance.
+    ELSE.
+      APPEND VALUE ts_partial(
+        name            = iv_name
+        template_string = iv_template_string
+        partial         = lr_partial_instance
+      ) TO ir_instance->mt_partials.
+    ENDIF.
   ENDMETHOD.
 
 
@@ -908,6 +1045,19 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ELSE.
       APPEND VALUE ts_helper( name = iv_name helper = lr_helper ) TO ir_instance->mt_helpers.
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD find_partial.
+    " Try to get a registered partial by its name
+    READ TABLE ir_instance->mt_partials REFERENCE INTO DATA(lr_partial) WITH KEY name = iv_name.
+
+    IF sy-subrc <> 0.
+      rs_result-error = |No partial found for { iv_name }|.
+      RETURN.
+    ENDIF.
+
+    rs_result-partial = lr_partial.
   ENDMETHOD.
 
 
@@ -957,13 +1107,22 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD constructor.
-    IF iv_import_static_helpers = abap_true.
+    IF iv_import_static_helpers = abap_true OR iv_import_static_partials = abap_true.
       DATA(lr_helper_instance) = zcl_handlebars_abap=>get_instance( ).
 
       " Add globally registered helpers.
-      LOOP AT lr_helper_instance->mt_helpers INTO DATA(ls_helper).
-        me->register_helper( iv_name = ls_helper-name ir_helper = ls_helper-helper ).
-      ENDLOOP.
+      IF iv_import_static_helpers = abap_true.
+        LOOP AT lr_helper_instance->mt_helpers INTO DATA(ls_helper).
+          me->register_helper( iv_name = ls_helper-name ir_helper = ls_helper-helper ).
+        ENDLOOP.
+      ENDIF.
+
+      " Add globally registered partials.
+      IF iv_import_static_partials = abap_true.
+        LOOP AT lr_helper_instance->mt_partials INTO DATA(ls_partial).
+          me->register_partial( iv_name = ls_partial-name iv_template_string = ls_partial-template_string ).
+        ENDLOOP.
+      ENDIF.
     ENDIF.
 
     " Register default block-helpers.
@@ -998,6 +1157,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
                c_c_round_bracket TYPE string VALUE '\)',
                c_pipe            TYPE string VALUE '\|',
                c_at              TYPE string VALUE '\@',
+               c_greater         TYPE string VALUE '>',
                c_as              TYPE string VALUE 'as',
                c_null            TYPE string VALUE 'null',
                c_undefined       TYPE string VALUE 'undefined',
@@ -1016,6 +1176,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ( pattern = c_c_round_bracket type = e_token_type_c_round_bracket )
       ( pattern = c_slash           type = e_token_type_slash           )
       ( pattern = c_at              type = e_token_type_at              )
+      ( pattern = c_greater         type = e_token_type_greater         )
       ( pattern = c_equal           type = e_token_type_equal           )
       ( pattern = c_pipe            type = e_token_type_pipe            )
     ).
@@ -1414,6 +1575,16 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       WHEN e_token_type_unknown.
         lv_error = me->parser_build_error( iv_error = |Unknown token type| is_token = ls_token ).
 
+        " If the current token is a > it's a partial.
+      WHEN e_token_type_greater.
+        CASE ls_next_token-type.
+          WHEN e_token_type_path OR e_token_type_o_round_bracket.
+            ls_result = me->parser_eval_partial( ).
+
+          WHEN OTHERS.
+            lv_valid = abap_false.
+        ENDCASE.
+
         " If the current token is a # it's the beginning of a block.
       WHEN e_token_type_hashtag.
         CASE ls_next_token-type.
@@ -1510,6 +1681,79 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     rs_result-stmt = ls_template.
+  ENDMETHOD.
+
+
+  METHOD parser_eval_partial.
+    DATA(ls_token) = me->parser_eat( ).
+    DATA(ls_start_token) = ls_token.
+
+    " Make sure block starts with >.
+    IF ls_token-type <> e_token_type_greater.
+      rs_result-error = me->parser_build_expected_error( iv_error = '>' is_token = ls_token ).
+      RETURN.
+    ENDIF.
+
+    ls_token = me->parser_peek( ).
+    DATA(lr_partial) = NEW ts_parser_partial( token = ls_token ).
+
+    CASE ls_token-type.
+      WHEN e_token_type_path.
+        DATA(ls_eval_path_result) = me->parser_eval_path( ).
+
+        IF ls_eval_path_result-error IS NOT INITIAL.
+          rs_result-error = ls_eval_path_result-error.
+          RETURN.
+        ENDIF.
+
+        DATA lr_path TYPE REF TO ts_parser_path.
+        lr_path ?= ls_eval_path_result-stmt.
+
+        " Make sure parsed path is a single identifier.
+        IF lr_path->is_identifier = abap_false.
+          rs_result-error = me->parser_build_expected_error( iv_error = 'identifier' is_token = ls_token ).
+          RETURN.
+        ENDIF.
+
+        lr_partial->name = lr_path.
+
+      WHEN e_token_type_o_round_bracket.
+        DATA(ls_subexpression_result) = me->parser_eval_sub_expr( ).
+
+        IF ls_subexpression_result-error IS NOT INITIAL.
+          rs_result-error = ls_subexpression_result-error.
+          RETURN.
+        ENDIF.
+
+        lr_partial->name = ls_subexpression_result-stmt.
+
+      WHEN OTHERS.
+        rs_result-error = me->parser_build_expected_error( iv_error = 'partial name or subexpression' is_token = ls_token ).
+        RETURN.
+    ENDCASE.
+
+    ls_token = me->parser_peek( ).
+    DATA(ls_arguments_result) = me->parser_eval_args( ).
+
+    IF ls_arguments_result-error IS NOT INITIAL.
+      rs_result-error = ls_arguments_result-error.
+      RETURN.
+    ENDIF.
+
+    DATA(lt_args) = ls_arguments_result-expressions.
+    DATA(lv_length_args) = lines( lt_args ).
+
+    IF lv_length_args > 0.
+      IF lv_length_args > 1.
+        rs_result-error = me->parser_build_error( iv_error = 'Only one context argument can be passed to partial' is_token = ls_token ).
+        RETURN.
+      ENDIF.
+
+      lr_partial->context = lt_args[ 1 ].
+    ENDIF.
+
+    lr_partial->hashes = ls_arguments_result-hashes.
+    rs_result-stmt = lr_partial.
   ENDMETHOD.
 
 
@@ -1899,13 +2143,14 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DATA ls_hash TYPE ts_parser_hash.
     DATA lt_hashes TYPE tt_parser_hashes.
     DATA(lt_termination_token_types) = it_termination_token_types.
-    DATA(lt_temp_term_token_types) = lt_termination_token_types.
-
-    APPEND e_token_type_hash_key TO lt_temp_term_token_types.
 
     " Add safety net.
     APPEND e_token_type_eop TO lt_termination_token_types.
     APPEND e_token_type_eof TO lt_termination_token_types.
+
+    " Create temporary termination tokens.
+    DATA(lt_temp_term_token_types) = lt_termination_token_types.
+    APPEND e_token_type_hash_key TO lt_temp_term_token_types.
 
     DO.
       DATA(ls_token) = me->parser_peek( ).
@@ -2017,12 +2262,21 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
         rs_result-text = lr_text->value.
 
+      WHEN 'ts_parser_partial'.
+        DATA lr_partial TYPE REF TO ts_parser_partial.
+        lr_partial ?= ir_stmt.
+
+        rs_result = me->backend_eval_partial(
+          ir_partial = lr_partial
+          ir_data    = ir_data
+        ).
+
       WHEN 'ts_parser_block'.
-        DATA lr_conditional_block TYPE REF TO ts_parser_block.
-        lr_conditional_block ?= ir_stmt.
+        DATA lr_block TYPE REF TO ts_parser_block.
+        lr_block ?= ir_stmt.
 
         rs_result = me->backend_eval_block(
-          ir_block = lr_conditional_block
+          ir_block = lr_block
           ir_data  = ir_data
         ).
 
@@ -2174,6 +2428,177 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     rs_result-data = lr_literal_value.
     rs_result-kind = me->backend_get_data_kind( lr_literal_value ).
+  ENDMETHOD.
+
+
+  METHOD backend_eval_partial.
+    DATA(lr_name) = ir_partial->name.
+    DATA(ls_token) = ir_partial->token.
+    DATA(lv_type) = me->get_data_type( lr_name )-name.
+
+    DATA lv_name TYPE string.
+
+    CASE lv_type.
+      WHEN 'ts_parser_path'.
+        DATA lr_path TYPE REF TO ts_parser_path.
+
+        lr_path ?= lr_name.
+        lv_name = lr_path->parts[ 1 ].
+
+      WHEN 'ts_parser_sub_expr'.
+        DATA lr_sub_expr TYPE REF TO ts_parser_sub_expr.
+        lr_path ?= lr_name.
+
+        DATA(ls_sub_expr_result) = me->backend_eval_sub_expr(
+          EXPORTING
+            ir_sub_expr = lr_sub_expr
+            ir_data     = ir_data
+        ).
+        DATA(lv_kind) = ls_sub_expr_result-kind.
+
+        IF ls_sub_expr_result-error IS NOT INITIAL.
+          rs_result-error = ls_sub_expr_result-error.
+          RETURN.
+        ELSEIF lv_kind <> e_backend_data_kind_simple.
+          rs_result-error = me->backend_build_error(
+            iv_error = 'Subexpression for partial returned no simple type'
+            is_token = lr_sub_expr->token
+          ).
+          RETURN.
+        ENDIF.
+
+        lv_name = |{ ls_sub_expr_result-data->* }|.
+
+      WHEN OTHERS.
+        rs_result-error = me->backend_build_error( iv_error = |Unknown partial name type { lv_type }| is_token = ls_token ).
+        RETURN.
+    ENDCASE.
+
+    DATA(lr_find_partial_result) = me->find_partial(
+      EXPORTING
+        ir_instance = me
+        iv_name     = lv_name
+    ).
+
+    IF lr_find_partial_result-error IS NOT INITIAL.
+      rs_result-error = lr_find_partial_result-error.
+      RETURN.
+    ENDIF.
+
+    DATA(lr_context) = ir_partial->context.
+    DATA(lr_data) = ir_data.
+
+    IF lr_context IS BOUND.
+      DATA(ls_context_result) = me->backend_eval_expr(
+        ir_stmt = lr_context
+        ir_data = lr_data
+      ).
+
+      IF ls_context_result-error IS NOT INITIAL.
+        rs_result-error = ls_context_result-error.
+        RETURN.
+      ENDIF.
+
+      lr_data = ls_context_result-data.
+    ENDIF.
+
+    DATA(lt_hashes) = ir_partial->hashes.
+
+    " If hashes were provided, they must be merged with the current context.
+    IF lines( lt_hashes ) > 0.
+      DATA(ls_context_kind) = me->backend_get_data_kind( lr_data ).
+
+      IF ls_context_kind <> e_backend_data_kind_struct.
+        rs_result-error = me->backend_build_error( iv_error = 'Hash arguments can only be set on an object context' is_token = ls_token ).
+        RETURN.
+      ENDIF.
+
+      DATA(ls_context_type) = me->get_data_type( lr_data ).
+      DATA lo_struct_descriptor TYPE REF TO cl_abap_structdescr.
+
+      IF ls_context_type-is_ref = abap_true.
+        lo_struct_descriptor = CAST cl_abap_structdescr( cl_abap_datadescr=>describe_by_data_ref( lr_data ) ).
+      ELSE.
+        lo_struct_descriptor = CAST cl_abap_structdescr( cl_abap_datadescr=>describe_by_data( lr_data->* ) ).
+      ENDIF.
+
+      DATA: lr_hash_data           TYPE REF TO data,
+            lt_original_properties TYPE string_table.
+
+      DATA(lt_components) = lo_struct_descriptor->get_components( ).
+
+      " Collect original properties.
+      LOOP AT lt_components INTO DATA(ls_original_component).
+        APPEND ls_original_component-name TO lt_original_properties.
+      ENDLOOP.
+
+      " Create new type dynamically.
+      LOOP AT lt_hashes INTO DATA(ls_hash).
+        DATA ls_property_descriptor TYPE abap_componentdescr.
+        CLEAR ls_property_descriptor.
+
+        DATA(ls_hash_expr_result) = me->backend_eval_expr(
+          ir_stmt = ls_hash-expression
+          ir_data = lr_data
+        ).
+
+        IF ls_hash_expr_result-error IS NOT INITIAL.
+          rs_result-error = ls_hash_expr_result-error.
+          RETURN.
+        ENDIF.
+
+        DATA(lv_key) = ls_hash-key.
+        TRANSLATE lv_key TO UPPER CASE.
+
+        READ TABLE lt_components TRANSPORTING NO FIELDS WITH KEY name = lv_key.
+
+        " If the property exists already, remove it from the freshly created type.
+        IF sy-subrc = 0.
+          DATA(lv_index) = sy-tabix.
+
+          DELETE lt_components INDEX lv_index.
+          DELETE lt_original_properties INDEX lv_index.
+        ENDIF.
+
+        lr_hash_data = ls_hash_expr_result-data.
+        ls_property_descriptor-name = ls_hash-key.
+        ls_property_descriptor-type = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_data( lr_hash_data->* ) ).
+
+        APPEND ls_property_descriptor TO lt_components.
+      ENDLOOP.
+
+      DATA(lo_merged_type_descriptor) = cl_abap_structdescr=>create( lt_components ).
+
+      DATA lr_merged_data TYPE REF TO data.
+      CREATE DATA lr_merged_data TYPE HANDLE lo_merged_type_descriptor.
+
+      " Fill with original data.
+      LOOP AT lt_original_properties INTO DATA(lv_original_property).
+        ASSIGN COMPONENT lv_original_property OF STRUCTURE lr_data->* TO FIELD-SYMBOL(<from_field>).
+        ASSIGN COMPONENT lv_original_property OF STRUCTURE lr_merged_data->* TO FIELD-SYMBOL(<to_field>).
+
+        <to_field> = <from_field>.
+      ENDLOOP.
+
+      " Fill with hash data.
+      LOOP AT lt_hashes INTO ls_hash.
+        ASSIGN COMPONENT lv_key OF STRUCTURE lr_merged_data->* TO FIELD-SYMBOL(<field>).
+
+        <field> = ls_hash_expr_result-data->*.
+      ENDLOOP.
+
+      lr_data = lr_merged_data.
+    ENDIF.
+
+    DATA(lr_found_partial) = lr_find_partial_result-partial.
+    DATA(ls_partial_result) = lr_found_partial->partial->template( lr_data ).
+
+    IF ls_partial_result-error IS NOT INITIAL.
+      rs_result-error = ls_partial_result-error.
+      RETURN.
+    ENDIF.
+
+    rs_result-text = ls_partial_result-text.
   ENDMETHOD.
 
 
