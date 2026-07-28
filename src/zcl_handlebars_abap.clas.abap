@@ -1827,7 +1827,13 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    CONSTANTS c_dot TYPE string VALUE '.'.
     DATA(lv_value) = ls_token-value.
+
+    " If path is a single dot, replace it by "this".
+    IF lv_value = c_dot.
+      lv_value = c_this.
+    ENDIF.
 
     " First split at slashes.
     SPLIT lv_value AT '/' INTO TABLE DATA(lt_relative_parts).
@@ -1838,7 +1844,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ELSE.
 
         " Now split at single dots.
-        SPLIT lv_relative_part AT '.' INTO TABLE DATA(lt_parts).
+        SPLIT lv_relative_part AT c_dot INTO TABLE DATA(lt_parts).
 
         LOOP AT lt_parts INTO DATA(lv_part).
           APPEND lv_part TO lt_collected_parts.
