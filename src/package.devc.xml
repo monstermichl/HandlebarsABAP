@@ -4,8 +4,6 @@
   <asx:values>
    <DEVC>
     <CTEXT>Single-file Handlebars implementation for ABAP</CTEXT>
-    <LANGUAGE>E</LANGUAGE>
-    <MASTERLANG>E</MASTERLANG>
    </DEVC>
   </asx:values>
  </asx:abap>
