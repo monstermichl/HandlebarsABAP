@@ -606,15 +606,22 @@ CLASS zcl_handlebars_abap DEFINITION
     TYPES: tt_backend_block_args TYPE STANDARD TABLE OF ts_backend_block_arg WITH EMPTY KEY.
 
     TYPES: BEGIN OF ts_backend_block_stack_block,
-             block TYPE REF TO ts_parser_block,
-             args  TYPE tt_backend_block_args,
+             block  TYPE REF TO ts_parser_block,
+             args   TYPE tt_backend_block_args,
+             pseudo TYPE abap_bool,
            END OF ts_backend_block_stack_block.
 
     TYPES: tt_backend_block_stack TYPE TABLE OF ts_backend_block_stack_block.
 
-    DATA: mr_root_data             TYPE REF TO data,
-          mt_backend_block_stack   TYPE tt_backend_block_stack,
+    DATA: mt_backend_block_stack   TYPE tt_backend_block_stack,
           mv_backend_inline_helper TYPE ts_parser_inline_helper.
+
+    METHODS template_internal
+      IMPORTING
+        ir_data          TYPE REF TO data OPTIONAL
+        it_block_stack   TYPE tt_backend_block_stack OPTIONAL
+      RETURNING
+        VALUE(rs_result) TYPE ts_template_result.
 
     METHODS backend_build_error
       IMPORTING
@@ -741,11 +748,24 @@ CLASS zcl_handlebars_abap DEFINITION
       RETURNING
         VALUE(rv_kind) TYPE e_backend_data_kinds.
 
+    METHODS backend_push_block
+      IMPORTING
+        VALUE(is_block) TYPE ts_backend_block_stack_block.
+
+    METHODS backend_push_pseudo_block
+      IMPORTING
+        VALUE(ir_data) TYPE REF TO data.
+
+    METHODS backend_pop_block
+      RETURNING
+        VALUE(rs_block) TYPE ts_backend_block_stack_block.
+
     METHODS backend_get_block
       IMPORTING
-        iv_index        TYPE i
-      RETURNING
-        VALUE(rr_block) TYPE REF TO ts_backend_block_stack_block.
+        VALUE(iv_index)    TYPE i
+      EXPORTING
+        VALUE(er_block)    TYPE REF TO ts_backend_block_stack_block
+        VALUE(ev_fallback) TYPE abap_bool.
 
     METHODS backend_get_last_block
       RETURNING
@@ -819,20 +839,14 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   METHOD template.
     DATA(lr_data) = me->any_to_ref_to_data( ia_data ).
 
-    me->mr_root_data = lr_data.
+    " Push a pseudo block to have a base for the whole template.
+    me->backend_push_pseudo_block( lr_data ).
 
-    DATA(ls_result) = me->backend_eval_stmt(
-      ir_stmt = me->mr_template
-      ir_data = lr_data
-    ).
-    DATA(lv_error) = ls_result-error.
+    " Template.
+    rs_result = me->template_internal( ir_data = lr_data ).
 
-    IF lv_error IS NOT INITIAL.
-      rs_result-error = lv_error.
-      RETURN.
-    ENDIF.
-
-    rs_result-text = ls_result-text.
+    " Pop pseudo block.
+    me->backend_pop_block( ).
   ENDMETHOD.
 
 
@@ -907,6 +921,28 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     rs_result-instance = lo_template.
+  ENDMETHOD.
+
+
+  METHOD template_internal.
+
+    " Add provided block stack.
+    LOOP AT it_block_stack INTO DATA(ls_block).
+      me->backend_push_block( ls_block ).
+    ENDLOOP.
+
+    DATA(ls_result) = me->backend_eval_stmt(
+      ir_stmt = me->mr_template
+      ir_data = ir_data
+    ).
+    DATA(lv_error) = ls_result-error.
+
+    IF lv_error IS NOT INITIAL.
+      rs_result-error = lv_error.
+      RETURN.
+    ENDIF.
+
+    rs_result-text = ls_result-text.
   ENDMETHOD.
 
 
@@ -2532,6 +2568,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         APPEND ls_original_component-name TO lt_original_properties.
       ENDLOOP.
 
+      DATA(lv_new_context_created) = abap_false.
+
       " Create new type dynamically.
       LOOP AT lt_hashes INTO DATA(ls_hash).
         DATA ls_property_descriptor TYPE abap_componentdescr.
@@ -2588,10 +2626,19 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ENDLOOP.
 
       lr_data = lr_merged_data.
+      me->backend_push_pseudo_block( lr_merged_data ).
     ENDIF.
 
     DATA(lr_found_partial) = lr_find_partial_result-partial.
-    DATA(ls_partial_result) = lr_found_partial->partial->template( lr_data ).
+    DATA(ls_partial_result) = lr_found_partial->partial->template_internal(
+      ir_data        = lr_data
+      it_block_stack = me->mt_backend_block_stack
+    ).
+
+    " Pop context "block" if necessary.
+    IF lv_new_context_created = abap_true.
+      me->backend_pop_block( ).
+    ENDIF.
 
     IF ls_partial_result-error IS NOT INITIAL.
       rs_result-error = ls_partial_result-error.
@@ -2674,7 +2721,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     " Push current block to stack for context information...
     IF lv_is_block = abap_true.
-      APPEND VALUE #( block = lr_block ) TO me->mt_backend_block_stack.
+      me->backend_push_block( VALUE #( block = lr_block ) ).
     ELSE.
       " ...or set current inline helper values.
       ASSIGN ir_helper->* TO FIELD-SYMBOL(<helper>).
@@ -2690,7 +2737,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     " Pop last entry from block stack.
     IF lv_is_block = abap_true.
-      DELETE me->mt_backend_block_stack INDEX lines( me->mt_backend_block_stack ).
+      me->backend_pop_block( ).
     ELSE.
       CLEAR me->mv_backend_inline_helper.
     ENDIF.
@@ -2976,13 +3023,19 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     WHILE lv_index <= lines( lt_parts ).
       IF lt_parts[ 1 ] = c_relative.
         lv_block_index = lv_original_block_index - lv_index.
-        lr_block = me->backend_get_block( lv_block_index ).
 
+        me->backend_get_block(
+          EXPORTING
+            iv_index    = lv_block_index
+          IMPORTING
+            er_block    = lr_block
+            ev_fallback = DATA(lv_fallback)
+        ).
         DELETE lt_parts INDEX 1.
 
-        " At worst, resolve to the root.
-        IF lr_block IS NOT BOUND.
-          lr_this = me->mr_root_data.
+        " Fallback block certainly has data.
+        IF lv_fallback = abap_true.
+          lr_this = lr_block->args[ 1 ]-data.
           EXIT.
         ENDIF.
 
@@ -3030,9 +3083,15 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
           " Use a do-loop to look for a properly named block parameter in the block stack from bottom to top (latest first).
           DO.
-            lr_block = backend_get_block( lv_block_index ).
+            backend_get_block(
+              EXPORTING
+                iv_index    = lv_block_index
+              IMPORTING
+                er_block    = lr_block
+                ev_fallback = lv_fallback
+            ).
 
-            IF lr_block IS NOT BOUND.
+            IF lv_fallback = abap_true.
               EXIT.
             ENDIF.
 
@@ -3106,9 +3165,15 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
               " Only go further up if it's allowed.
               IF lv_only_down = abap_false.
-                lr_block = me->backend_get_block( lv_block_index ).
+                me->backend_get_block(
+                  EXPORTING
+                    iv_index    = lv_block_index
+                  IMPORTING
+                    er_block    = lr_block
+                    ev_fallback = lv_fallback
+                ).
 
-                IF lr_block IS NOT BOUND.
+                IF lv_fallback = abap_true.
                   lv_undefined = abap_true.
                   EXIT.
                 ENDIF.
@@ -3199,17 +3264,56 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD backend_push_block.
+    APPEND is_block TO me->mt_backend_block_stack.
+  ENDMETHOD.
+
+
+  METHOD backend_push_pseudo_block.
+    me->backend_push_block( VALUE #(
+      pseudo = abap_true
+      args   = VALUE #(
+        ( data = ir_data )
+      )
+    ) ).
+  ENDMETHOD.
+
+
+  METHOD backend_pop_block.
+    DATA(lr_block) = me->backend_get_last_block( ).
+
+    rs_block = lr_block->*.
+    DELETE me->mt_backend_block_stack INDEX lines( me->mt_backend_block_stack ).
+  ENDMETHOD.
+
+
   METHOD backend_get_block.
-    READ TABLE me->mt_backend_block_stack REFERENCE INTO rr_block INDEX iv_index.
+    CLEAR er_block.
+    CLEAR ev_fallback.
+
+    " If index is smaller than 1, it's set to one. This way it's ensured
+    " that at least the root data (pseudo block) is returned.
+    IF iv_index < 1.
+      iv_index = 1.
+      ev_fallback = abap_true.
+    ENDIF.
+
+    READ TABLE me->mt_backend_block_stack REFERENCE INTO er_block INDEX iv_index.
 
     IF sy-subrc <> 0.
-      FREE rr_block.
+      FREE er_block.
     ENDIF.
   ENDMETHOD.
 
 
   METHOD backend_get_last_block.
-    rr_block = me->backend_get_block( lines( mt_backend_block_stack ) ).
+    me->backend_get_block(
+      EXPORTING
+        iv_index = lines( mt_backend_block_stack )
+      IMPORTING
+        er_block = rr_block
+        ev_fallback = DATA(lv_data)
+    ).
   ENDMETHOD.
 
 
