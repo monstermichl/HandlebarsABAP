@@ -38,6 +38,11 @@ CLASS ltcl_handlebars_abap DEFINITION FOR TESTING
 
     TYPES: tt_people TYPE STANDARD TABLE OF ts_person WITH EMPTY KEY.
 
+    TYPES: BEGIN OF ts_manager,
+             employees TYPE tt_people.
+             INCLUDE TYPE ts_person.
+    TYPES: END OF ts_manager.
+
     CONSTANTS: c_empty_error TYPE string VALUE ''.
 
     METHODS: template_structure_success FOR TESTING.
@@ -196,24 +201,34 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD template_partial_success.
-    zcl_handlebars_abap=>register_partial_static( iv_name = 'partial' iv_template_string = '{{title}} {{firstname}} {{lastname}}' ).
+    CONSTANTS c_title TYPE string VALUE 'Mr.'.
+
+    zcl_handlebars_abap=>register_partial_static( iv_name = 'partial' iv_template_string = '{{title}} {{firstname}} {{lastname}} (manager: {{../../firstname}} {{../../lastname}})' ).
 
     DATA(ls_compile_result) = zcl_handlebars_abap=>compile(
-      '{{> partial . title="Mr."}}'
+      '{{#each employees}}' &
+        '{{> partial . title="' && c_title && '"}}' &
+      '{{/each}}'
     ).
     cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_compile_result-error ).
 
-    DATA(ls_template_result) = ls_compile_result-instance->template( VALUE ts_person(
+    DATA(ls_employee) = VALUE ts_person(
       firstname = 'Marc'
       lastname = 'Cucurella'
-    ) ).
+    ).
+    DATA(ls_manager) = VALUE ts_manager(
+      firstname = 'Luis'
+      lastname = 'de la Fuente'
+      employees = VALUE #( ( ls_employee ) )
+    ).
+    DATA(ls_template_result) = ls_compile_result-instance->template( ls_manager ).
 
     cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
 
     CONDENSE ls_template_result-text.
 
     cl_abap_unit_assert=>assert_equals(
-      exp = 'Mr. Marc Cucurella'
+      exp = |{ c_title } { ls_employee-firstname } { ls_employee-lastname } (manager: { ls_manager-firstname } { ls_manager-lastname })|
       act = ls_template_result-text
     ).
   ENDMETHOD.
