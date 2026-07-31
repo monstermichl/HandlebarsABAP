@@ -206,13 +206,13 @@ CLASS zcl_handlebars_abap DEFINITION
 
     CLASS-DATA: cr_helper_instance TYPE REF TO zcl_handlebars_abap.
 
-    DATA: mt_partials TYPE tt_partials,
+    DATA: mr_parent   TYPE REF TO zcl_handlebars_abap,
+          mt_partials TYPE tt_partials,
           mt_helpers  TYPE tt_helpers.
 
     CLASS-METHODS compile_internal
       IMPORTING
         VALUE(iv_template_string) TYPE string
-        VALUE(iv_import_static)   TYPE abap_bool
       RETURNING
         VALUE(rs_result)          TYPE ts_compile_result.
 
@@ -225,6 +225,12 @@ CLASS zcl_handlebars_abap DEFINITION
     CLASS-METHODS get_instance
       RETURNING
         VALUE(rr_instance) TYPE REF TO zcl_handlebars_abap.
+
+    CLASS-METHODS get_root
+      IMPORTING
+        VALUE(ir_instance) TYPE REF TO zcl_handlebars_abap
+      RETURNING
+        VALUE(rr_root)     TYPE REF TO zcl_handlebars_abap.
 
     CLASS-METHODS register_partial_internal
       IMPORTING
@@ -244,17 +250,17 @@ CLASS zcl_handlebars_abap DEFINITION
 
     CLASS-METHODS find_partial
       IMPORTING
-        ir_instance      TYPE REF TO zcl_handlebars_abap
-        iv_name          TYPE string
+        VALUE(ir_instance) TYPE REF TO zcl_handlebars_abap
+        VALUE(iv_name)     TYPE string
       RETURNING
-        VALUE(rs_result) TYPE ts_find_partial_result.
+        VALUE(rs_result)   TYPE ts_find_partial_result.
 
     CLASS-METHODS find_helper
       IMPORTING
-        ir_instance      TYPE REF TO zcl_handlebars_abap
-        iv_name          TYPE string
+        VALUE(ir_instance) TYPE REF TO zcl_handlebars_abap
+        VALUE(iv_name)     TYPE string
       RETURNING
-        VALUE(rs_result) TYPE ts_find_helper_result.
+        VALUE(rs_result)   TYPE ts_find_helper_result.
 
     CLASS-METHODS get_data_type
       IMPORTING
@@ -270,8 +276,8 @@ CLASS zcl_handlebars_abap DEFINITION
 
     METHODS constructor
       IMPORTING
-        iv_import_static_helpers  TYPE abap_bool
-        iv_import_static_partials TYPE abap_bool.
+        VALUE(iv_singleton) TYPE abap_bool
+        VALUE(ir_parent)    TYPE REF TO zcl_handlebars_abap OPTIONAL.
 
     " .:: Tokenizer section.
     TYPES: e_tokenizer_token_type TYPE string.
@@ -318,15 +324,15 @@ CLASS zcl_handlebars_abap DEFINITION
 
     TYPES: tt_tokenizer_tokens TYPE STANDARD TABLE OF ts_tokenizer_token WITH KEY position.
 
-    DATA: c_if       TYPE string VALUE 'if',
-          c_unless   TYPE string VALUE 'unless',
-          c_each     TYPE string VALUE 'each',
-          c_with     TYPE string VALUE 'with',
-          c_else     TYPE string VALUE 'else',
-          c_true     TYPE string VALUE 'true',
-          c_false    TYPE string VALUE 'false',
-          c_this     TYPE string VALUE 'this',
-          c_relative TYPE string VALUE '..'.
+    CONSTANTS: c_if       TYPE string VALUE 'if',
+               c_unless   TYPE string VALUE 'unless',
+               c_each     TYPE string VALUE 'each',
+               c_with     TYPE string VALUE 'with',
+               c_else     TYPE string VALUE 'else',
+               c_true     TYPE string VALUE 'true',
+               c_false    TYPE string VALUE 'false',
+               c_this     TYPE string VALUE 'this',
+               c_relative TYPE string VALUE '..'.
 
     DATA: mt_tokenizer_tokens TYPE tt_tokenizer_tokens.
 
@@ -606,9 +612,11 @@ CLASS zcl_handlebars_abap DEFINITION
     TYPES: tt_backend_block_args TYPE STANDARD TABLE OF ts_backend_block_arg WITH EMPTY KEY.
 
     TYPES: BEGIN OF ts_backend_block_stack_block,
-             block  TYPE REF TO ts_parser_block,
-             args   TYPE tt_backend_block_args,
-             pseudo TYPE abap_bool,
+             block               TYPE REF TO ts_parser_block,
+             args                TYPE tt_backend_block_args,
+             pseudo              TYPE abap_bool,
+             original_context    TYPE REF TO data,
+             context_not_changed TYPE abap_bool,
            END OF ts_backend_block_stack_block.
 
     TYPES: tt_backend_block_stack TYPE TABLE OF ts_backend_block_stack_block.
@@ -618,8 +626,8 @@ CLASS zcl_handlebars_abap DEFINITION
 
     METHODS template_internal
       IMPORTING
-        ir_data          TYPE REF TO data OPTIONAL
-        it_block_stack   TYPE tt_backend_block_stack OPTIONAL
+        VALUE(ir_data)   TYPE REF TO data OPTIONAL
+        VALUE(ir_parent) TYPE REF TO zcl_handlebars_abap OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_template_result.
 
@@ -748,6 +756,11 @@ CLASS zcl_handlebars_abap DEFINITION
       RETURNING
         VALUE(rv_kind) TYPE e_backend_data_kinds.
 
+    METHODS backend_get_block_stack_length
+      RETURNING
+        VALUE(rv_length) TYPE i.
+
+
     METHODS backend_push_block
       IMPORTING
         VALUE(is_block) TYPE ts_backend_block_stack_block.
@@ -768,8 +781,10 @@ CLASS zcl_handlebars_abap DEFINITION
         VALUE(ev_fallback) TYPE abap_bool.
 
     METHODS backend_get_last_block
+      IMPORTING
+        VALUE(iv_include_pseudo) TYPE abap_bool DEFAULT abap_false
       RETURNING
-        VALUE(rr_block) TYPE REF TO ts_backend_block_stack_block.
+        VALUE(rr_block)          TYPE REF TO ts_backend_block_stack_block.
 
     METHODS backend_call_helper
       IMPORTING
@@ -793,10 +808,7 @@ ENDCLASS.
 CLASS zcl_handlebars_abap IMPLEMENTATION.
 
   METHOD compile.
-    rs_result = zcl_handlebars_abap=>compile_internal(
-      iv_template_string = iv_template_string
-      iv_import_static   = abap_true
-    ).
+    rs_result = zcl_handlebars_abap=>compile_internal( iv_template_string ).
   ENDMETHOD.
 
 
@@ -896,10 +908,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
   METHOD compile_internal.
     DATA(lv_template_string) = iv_template_string.
-    DATA(lo_template) = NEW zcl_handlebars_abap(
-      iv_import_static_helpers  = iv_import_static
-      iv_import_static_partials = iv_import_static
-    ).
+    DATA(lo_template) = NEW zcl_handlebars_abap( abap_false ).
 
     " First, try to load stored HTML template from SMW0.
     lv_template_string = zcl_handlebars_abap=>try_to_load_template( lv_template_string ).
@@ -925,11 +934,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD template_internal.
-
-    " Add provided block stack.
-    LOOP AT it_block_stack INTO DATA(ls_block).
-      me->backend_push_block( ls_block ).
-    ENDLOOP.
+    me->mr_parent = ir_parent.
 
     DATA(ls_result) = me->backend_eval_stmt(
       ir_stmt = me->mr_template
@@ -1005,13 +1010,19 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
   METHOD get_instance.
     IF zcl_handlebars_abap=>cr_helper_instance IS NOT BOUND.
-      zcl_handlebars_abap=>cr_helper_instance = NEW zcl_handlebars_abap(
-        iv_import_static_helpers  = abap_false
-        iv_import_static_partials = abap_false
-      ).
+      zcl_handlebars_abap=>cr_helper_instance = NEW zcl_handlebars_abap( iv_singleton = abap_true ).
     ENDIF.
 
     rr_instance = zcl_handlebars_abap=>cr_helper_instance.
+  ENDMETHOD.
+
+
+  METHOD get_root.
+    rr_root = ir_instance.
+
+    WHILE rr_root->mr_parent IS BOUND.
+      rr_root = rr_root->mr_parent.
+    ENDWHILE.
   ENDMETHOD.
 
 
@@ -1024,10 +1035,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(ls_partial_result) = zcl_handlebars_abap=>compile_internal(
-      iv_template_string = iv_template_string
-      iv_import_static   = abap_false
-    ).
+    DATA(ls_partial_result) = zcl_handlebars_abap=>compile_internal( iv_template_string ).
     DATA(lv_partial_compile_error) = ls_partial_result-error.
 
     IF lv_partial_compile_error IS NOT INITIAL.
@@ -1086,10 +1094,18 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD find_partial.
-    " Try to get a registered partial by its name
-    READ TABLE ir_instance->mt_partials REFERENCE INTO DATA(lr_partial) WITH KEY name = iv_name.
+    DATA(lr_root) = zcl_handlebars_abap=>get_root( ir_instance ).
+
+    " Try to get a registered partial by its name on root.
+    READ TABLE lr_root->mt_partials REFERENCE INTO DATA(lr_partial) WITH KEY name = iv_name.
 
     IF sy-subrc <> 0.
+      " Try to get a registered partial by its name from singleton instance.
+      ir_instance = zcl_handlebars_abap=>get_instance( ).
+      READ TABLE ir_instance->mt_partials REFERENCE INTO lr_partial WITH KEY name = iv_name.
+    ENDIF.
+
+    IF lr_partial IS NOT BOUND.
       rs_result-error = |No partial found for { iv_name }|.
       RETURN.
     ENDIF.
@@ -1099,10 +1115,18 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD find_helper.
-    " Try to get a registered helper by its name
-    READ TABLE ir_instance->mt_helpers REFERENCE INTO DATA(lr_helper) WITH KEY name = iv_name.
+    DATA(lr_root) = zcl_handlebars_abap=>get_root( ir_instance ).
+
+    " Try to get a registered helper by its name on root.
+    READ TABLE lr_root->mt_helpers REFERENCE INTO DATA(lr_helper) WITH KEY name = iv_name.
 
     IF sy-subrc <> 0.
+      " Try to get a registered helper by its name from singleton instance.
+      ir_instance = zcl_handlebars_abap=>get_instance( ).
+      READ TABLE ir_instance->mt_helpers REFERENCE INTO lr_helper WITH KEY name = iv_name.
+    ENDIF.
+
+    IF lr_helper IS NOT BOUND.
       rs_result-error = |No helper found for { iv_name }|.
       RETURN.
     ENDIF.
@@ -1144,32 +1168,28 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD constructor.
-    IF iv_import_static_helpers = abap_true OR iv_import_static_partials = abap_true.
+    IF iv_singleton = abap_false.
       DATA(lr_helper_instance) = zcl_handlebars_abap=>get_instance( ).
 
       " Add globally registered helpers.
-      IF iv_import_static_helpers = abap_true.
-        LOOP AT lr_helper_instance->mt_helpers INTO DATA(ls_helper).
-          me->register_helper( iv_name = ls_helper-name ir_helper = ls_helper-helper ).
-        ENDLOOP.
-      ENDIF.
+      LOOP AT lr_helper_instance->mt_helpers INTO DATA(ls_helper).
+        APPEND ls_helper TO me->mt_helpers.
+      ENDLOOP.
 
       " Add globally registered partials.
-      IF iv_import_static_partials = abap_true.
-        LOOP AT lr_helper_instance->mt_partials INTO DATA(ls_partial).
-          me->register_partial( iv_name = ls_partial-name iv_template_string = ls_partial-template_string ).
-        ENDLOOP.
-      ENDIF.
+      LOOP AT lr_helper_instance->mt_partials INTO DATA(ls_partial).
+        APPEND ls_partial TO me->mt_partials ASSIGNING FIELD-SYMBOL(<partial>).
+      ENDLOOP.
+
+      " Register default block-helpers.
+      me->register_helper( iv_name = c_if     ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_cond_helper' ) ).
+      me->register_helper( iv_name = c_unless ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_cond_helper' ) ).
+      me->register_helper( iv_name = c_each   ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_each_helper' ) ).
+      me->register_helper( iv_name = c_with   ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_with_helper' ) ).
+
+      " Register default inline-helpers.
+      me->register_helper( iv_name = 'log' ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_log_helper' ) ).
     ENDIF.
-
-    " Register default block-helpers.
-    me->register_helper( iv_name = c_if     ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_cond_helper' ) ).
-    me->register_helper( iv_name = c_unless ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_cond_helper' ) ).
-    me->register_helper( iv_name = c_each   ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_each_helper' ) ).
-    me->register_helper( iv_name = c_with   ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_with_helper' ) ).
-
-    " Register default inline-helpers.
-    me->register_helper( iv_name = 'log' ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_log_helper' ) ).
   ENDMETHOD.
 
 
@@ -2560,24 +2580,41 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ENDIF.
 
       DATA: lr_hash_data           TYPE REF TO data,
-            lt_original_properties TYPE string_table.
+            lt_original_properties TYPE string_table,
+            lt_components          TYPE cl_abap_structdescr=>component_table.
 
-      DATA(lt_components) = lo_struct_descriptor->get_components( ).
+      " Get components by using get_included_view instead of get_components.
+      " get_components does not expand included types.
+      DATA(lt_included_view) = lo_struct_descriptor->get_included_view( ).
 
       " Collect original properties.
-      LOOP AT lt_components INTO DATA(ls_original_component).
-        APPEND ls_original_component-name TO lt_original_properties.
+      LOOP AT lt_included_view INTO DATA(ls_included_view).
+        APPEND ls_included_view-name TO lt_original_properties.
+
+        APPEND VALUE #(
+          name = ls_included_view-name
+          type = ls_included_view-type
+        ) TO lt_components.
       ENDLOOP.
 
+      TYPES: BEGIN OF ts_evaluated_hash_data,
+               key  TYPE string,
+               data TYPE REF TO data,
+             END OF ts_evaluated_hash_data.
+
+      DATA lt_evaluated_hash_data TYPE TABLE OF ts_evaluated_hash_data.
       DATA(lv_new_context_created) = abap_false.
 
       " Create new type dynamically.
-      LOOP AT lt_hashes INTO DATA(ls_hash).
+      LOOP AT lt_hashes ASSIGNING FIELD-SYMBOL(<hash>).
+        " Make sure hash key is upper case.
+        TRANSLATE <hash>-key TO UPPER CASE.
+
         DATA ls_property_descriptor TYPE abap_componentdescr.
         CLEAR ls_property_descriptor.
 
         DATA(ls_hash_expr_result) = me->backend_eval_expr(
-          ir_stmt = ls_hash-expression
+          ir_stmt = <hash>-expression
           ir_data = lr_data
         ).
 
@@ -2586,22 +2623,24 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           RETURN.
         ENDIF.
 
-        DATA(lv_key) = ls_hash-key.
-        TRANSLATE lv_key TO UPPER CASE.
-
-        READ TABLE lt_components TRANSPORTING NO FIELDS WITH KEY name = lv_key.
+        DATA(lv_key) = <hash>-key.
+        READ TABLE lt_included_view TRANSPORTING NO FIELDS WITH KEY name = lv_key.
 
         " If the property exists already, remove it from the freshly created type.
         IF sy-subrc = 0.
           DATA(lv_index) = sy-tabix.
 
-          DELETE lt_components INDEX lv_index.
           DELETE lt_original_properties INDEX lv_index.
+          DELETE lt_components INDEX lv_index.
         ENDIF.
 
-        lr_hash_data = ls_hash_expr_result-data.
-        ls_property_descriptor-name = ls_hash-key.
-        ls_property_descriptor-type = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_data( lr_hash_data->* ) ).
+        APPEND VALUE #(
+          key  = lv_key
+          data = ls_hash_expr_result-data
+        ) TO lt_evaluated_hash_data ASSIGNING FIELD-SYMBOL(<evaluated_hash>).
+
+        ls_property_descriptor-name = lv_key.
+        ls_property_descriptor-type = CAST cl_abap_datadescr( cl_abap_typedescr=>describe_by_data_ref( <evaluated_hash>-data ) ).
 
         APPEND ls_property_descriptor TO lt_components.
       ENDLOOP.
@@ -2620,10 +2659,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ENDLOOP.
 
       " Fill with hash data.
-      LOOP AT lt_hashes INTO ls_hash.
-        ASSIGN COMPONENT lv_key OF STRUCTURE lr_merged_data->* TO FIELD-SYMBOL(<field>).
+      LOOP AT lt_hashes INTO DATA(ls_hash).
+        lv_key = ls_hash-key.
 
-        <field> = ls_hash_expr_result-data->*.
+        ASSIGN COMPONENT lv_key OF STRUCTURE lr_merged_data->* TO FIELD-SYMBOL(<field>).
+        <field> = lt_evaluated_hash_data[ key = lv_key ]-data->*.
       ENDLOOP.
 
       lr_data = lr_merged_data.
@@ -2632,8 +2672,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     DATA(lr_found_partial) = lr_find_partial_result-partial.
     DATA(ls_partial_result) = lr_found_partial->partial->template_internal(
-      ir_data        = lr_data
-      it_block_stack = me->mt_backend_block_stack
+      ir_data   = lr_data
+      ir_parent = me
     ).
 
     " Pop context "block" if necessary.
@@ -2722,7 +2762,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     " Push current block to stack for context information...
     IF lv_is_block = abap_true.
-      me->backend_push_block( VALUE #( block = lr_block ) ).
+      me->backend_push_block( VALUE #( block = lr_block original_context = ir_data ) ).
     ELSE.
       " ...or set current inline helper values.
       ASSIGN ir_helper->* TO FIELD-SYMBOL(<helper>).
@@ -2764,6 +2804,18 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         RETURN.
       ENDIF.
 
+      DATA(lr_original_context) = lr_block->original_context.
+      DATA(lv_original_context_type) = zcl_handlebars_abap=>get_data_type( ia_data ).
+      DATA(lv_new_context_type) = zcl_handlebars_abap=>get_data_type( lr_original_context ).
+
+      lr_block->context_not_changed = COND #(
+        WHEN
+          lv_original_context_type-is_ref = lv_new_context_type-is_ref AND
+          lv_original_context_type-name   = lv_new_context_type-name   AND
+          ia_data                         = lr_original_context
+        THEN abap_true
+        ELSE abap_false
+      ).
       DATA(lr_parser_block) = lr_block->block.
 
       DATA ls_body TYPE ts_parser_body.
@@ -3018,7 +3070,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DATA(lv_relative_path_found) = abap_false.
     DATA(lv_undefined) = abap_false.
     DATA(lv_index) = 1.
-    DATA(lv_original_block_index) = lines( me->mt_backend_block_stack ).
+    DATA(lv_original_block_index) = me->backend_get_block_stack_length( ).
 
     " Go back the amount of relative steps.
     WHILE lv_index <= lines( lt_parts ).
@@ -3032,7 +3084,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
             er_block    = lr_block
             ev_fallback = DATA(lv_fallback)
         ).
-        DELETE lt_parts INDEX 1.
+
+        IF lr_block->context_not_changed = abap_false.
+          DELETE lt_parts INDEX 1.
+        ENDIF.
 
         " Fallback block certainly has data.
         IF lv_fallback = abap_true.
@@ -3096,6 +3151,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
               EXIT.
             ENDIF.
 
+*            IF lr_block->pseudo = abap_false.
             DATA ls_arg TYPE ts_backend_block_arg.
             READ TABLE lr_block->args INTO ls_arg WITH KEY param-name = lv_part.
 
@@ -3123,6 +3179,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
               lv_skip = abap_true.
               EXIT.
             ENDIF.
+*            ENDIF.
 
             lv_block_index = lv_block_index - 1.
           ENDDO.
@@ -3265,8 +3322,15 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD backend_get_block_stack_length.
+    DATA(lr_root) = zcl_handlebars_abap=>get_root( me ).
+    rv_length = lines( lr_root->mt_backend_block_stack ).
+  ENDMETHOD.
+
+
   METHOD backend_push_block.
-    APPEND is_block TO me->mt_backend_block_stack.
+    DATA(lr_root) = zcl_handlebars_abap=>get_root( me ).
+    APPEND is_block TO lr_root->mt_backend_block_stack.
   ENDMETHOD.
 
 
@@ -3281,10 +3345,12 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD backend_pop_block.
-    DATA(lr_block) = me->backend_get_last_block( ).
+    DATA(lr_root) = zcl_handlebars_abap=>get_root( me ).
+    DATA(lr_block) = lr_root->backend_get_last_block( abap_true ).
+    DATA(lv_length) = me->backend_get_block_stack_length( ).
 
     rs_block = lr_block->*.
-    DELETE me->mt_backend_block_stack INDEX lines( me->mt_backend_block_stack ).
+    DELETE lr_root->mt_backend_block_stack INDEX lv_length.
   ENDMETHOD.
 
 
@@ -3299,7 +3365,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ev_fallback = abap_true.
     ENDIF.
 
-    READ TABLE me->mt_backend_block_stack REFERENCE INTO er_block INDEX iv_index.
+    DATA(lr_root) = zcl_handlebars_abap=>get_root( me ).
+    READ TABLE lr_root->mt_backend_block_stack REFERENCE INTO er_block INDEX iv_index.
 
     IF sy-subrc <> 0.
       FREE er_block.
@@ -3308,13 +3375,28 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD backend_get_last_block.
-    me->backend_get_block(
-      EXPORTING
-        iv_index = lines( mt_backend_block_stack )
-      IMPORTING
-        er_block = rr_block
-        ev_fallback = DATA(lv_data)
-    ).
+    DATA(lv_index) = me->backend_get_block_stack_length( ).
+
+    WHILE 1 = 1.
+      me->backend_get_block(
+        EXPORTING
+          iv_index    = lv_index
+        IMPORTING
+          er_block    = DATA(lr_block)
+          ev_fallback = DATA(lv_fallback)
+      ).
+
+      IF lr_block->pseudo = abap_true AND iv_include_pseudo = abap_false.
+        IF lv_fallback = abap_true.
+          EXIT.
+        ENDIF.
+
+        lv_index = lv_index - 1.
+      ELSE.
+        rr_block = lr_block.
+        EXIT.
+      ENDIF.
+    ENDWHILE.
   ENDMETHOD.
 
 
