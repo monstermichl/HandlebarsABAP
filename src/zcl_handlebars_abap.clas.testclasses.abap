@@ -47,7 +47,9 @@ CLASS ltcl_handlebars_abap DEFINITION FOR TESTING
 
     METHODS: template_structure_success FOR TESTING.
     METHODS: template_table_success FOR TESTING.
+    METHODS: template_partial_hash_success FOR TESTING.
     METHODS: template_partial_success FOR TESTING.
+    METHODS: template_partial_ctx_success FOR TESTING.
     METHODS: template_args_check_success FOR TESTING.
     METHODS: template_inline_check_success FOR TESTING.
     METHODS: template_custom_helper_success FOR TESTING.
@@ -200,7 +202,7 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
   ENDMETHOD.
 
 
-  METHOD template_partial_success.
+  METHOD template_partial_hash_success.
     CONSTANTS c_title TYPE string VALUE 'Mr.'.
 
     zcl_handlebars_abap=>register_partial_static( iv_name = 'partial' iv_template_string = '{{title}} {{firstname}} {{lastname}} (manager: {{../../firstname}} {{../../lastname}})' ).
@@ -229,6 +231,52 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_equals(
       exp = |{ c_title } { ls_employee-firstname } { ls_employee-lastname } (manager: { ls_manager-firstname } { ls_manager-lastname })|
+      act = ls_template_result-text
+    ).
+  ENDMETHOD.
+
+
+  METHOD template_partial_success.
+    zcl_handlebars_abap=>register_partial_static( iv_name = 'partial' iv_template_string = '{{title.front}} {{firstname}} {{lastname}}' ).
+
+    DATA(ls_compile_result) = zcl_handlebars_abap=>compile(
+      '{{> partial}}'
+    ).
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_compile_result-error ).
+
+    DATA(ls_employee) = VALUE ts_person(
+      firstname = 'Marc'
+      lastname = 'Cucurella'
+    ).
+    DATA(ls_template_result) = ls_compile_result-instance->template( ls_employee ).
+
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
+
+    CONDENSE ls_template_result-text.
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = |{ ls_employee-firstname } { ls_employee-lastname }|
+      act = ls_template_result-text
+    ).
+  ENDMETHOD.
+
+
+  METHOD template_partial_ctx_success.
+    zcl_handlebars_abap=>register_partial_static( iv_name = 'partial' iv_template_string = '{{this}}' ).
+
+    DATA(ls_compile_result) = zcl_handlebars_abap=>compile(
+      '{{> partial "Marc"}}'
+    ).
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_compile_result-error ).
+
+    DATA(ls_template_result) = ls_compile_result-instance->template( ).
+
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
+
+    CONDENSE ls_template_result-text.
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = 'Marc'
       act = ls_template_result-text
     ).
   ENDMETHOD.
