@@ -1035,12 +1035,13 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(ls_find_partial_result) = zcl_handlebars_abap=>find_partial( ir_instance = ir_instance iv_name = iv_name ).
+    DATA(ls_find_partial_result) = ir_instance->find_partial( ir_instance = ir_instance iv_name = iv_name ).
     DATA(lr_partial_instance) = ls_partial_result-instance.
 
     " If a corresponding partial was found, update it.
     IF ls_find_partial_result-error IS INITIAL.
       ls_find_partial_result-partial->partial ?= lr_partial_instance.
+      ls_find_partial_result-partial->template_string = iv_template_string.
     ELSE.
       APPEND VALUE ts_partial(
         name            = iv_name
@@ -1073,7 +1074,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         RETURN.
     ENDCASE.
 
-    DATA(ls_find_helper_result) = zcl_handlebars_abap=>find_helper( ir_instance = ir_instance iv_name = iv_name ).
+    DATA(ls_find_helper_result) = ir_instance->find_helper( ir_instance = ir_instance iv_name = iv_name ).
 
     " If a corresponding helper was found, update it.
     IF ls_find_helper_result-error IS INITIAL.
