@@ -3095,6 +3095,25 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DATA(lv_index) = 1.
     DATA(lv_original_block_index) = me->backend_get_block_stack_length( ).
 
+    " Get last block index that is pseudo or had a context change.
+    " This is necessary to get the correct starting point for the
+    " relative path evaluation.
+    DO.
+      me->backend_get_block(
+        EXPORTING
+          iv_index    = lv_original_block_index
+        IMPORTING
+          er_block    = lr_block
+          ev_fallback = DATA(lv_fallback)
+      ).
+
+      IF lr_block->context_not_changed = abap_false OR lr_block->is_pseudo = abap_true.
+        EXIT.
+      ENDIF.
+
+      lv_original_block_index = lv_original_block_index - 1.
+    ENDDO.
+
     " Go back the amount of relative steps.
     WHILE lv_index <= lines( lt_parts ).
       IF lt_parts[ 1 ] = c_relative.
@@ -3105,12 +3124,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
             iv_index    = lv_block_index
           IMPORTING
             er_block    = lr_block
-            ev_fallback = DATA(lv_fallback)
+            ev_fallback = lv_fallback
         ).
 
-        IF lr_block->context_not_changed = abap_false.
-          DELETE lt_parts INDEX 1.
-        ENDIF.
+        DELETE lt_parts INDEX 1.
 
         " Fallback block certainly has data.
         IF lv_fallback = abap_true.
