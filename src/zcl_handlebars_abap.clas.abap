@@ -1713,19 +1713,13 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ) TO lt_parts.
     ENDIF.
 
-    DATA(lt_mappings) = VALUE tt_mapping(
-      ( pattern = c_newline_pattern type = e_token_type_newline    )
-      ( pattern = c_space_pattern   type = e_token_type_text_space )
-      ( pattern = c_tab_pattern     type = e_token_type_text_space )
-    ).
-
     " Create the tokens.
     LOOP AT lt_parts INTO DATA(ls_part).
       DATA(lv_token_type) = e_token_type_text.
 
       lv_part = ls_part-value.
 
-      LOOP AT lt_mappings INTO DATA(ls_mapping).
+      LOOP AT lt_mappings INTO ls_mapping.
         FIND REGEX ls_mapping-pattern IN lv_part.
 
         IF sy-subrc = 0.
