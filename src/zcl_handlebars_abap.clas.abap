@@ -1624,7 +1624,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
   METHOD tokenizer_add_text_token.
     CONSTANTS: c_newline_pattern TYPE string VALUE '\r?\n',
-               c_space_pattern   TYPE string VALUE '\s+',
+               c_space_pattern   TYPE string VALUE ' +',
                c_tab_pattern     TYPE string VALUE '\t+'.
 
     TYPES: BEGIN OF ts_mapping,
@@ -1639,7 +1639,26 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
              value    TYPE string,
            END OF ts_part.
 
-    FIND ALL OCCURRENCES OF REGEX |({ c_newline_pattern }\|{ c_space_pattern }\|{ c_tab_pattern })| IN iv_value RESULTS DATA(lt_results).
+    DATA(lt_mappings) = VALUE tt_mapping(
+      ( pattern = c_newline_pattern type = e_token_type_newline    )
+      ( pattern = c_space_pattern   type = e_token_type_text_space )
+      ( pattern = c_tab_pattern     type = e_token_type_text_space )
+    ).
+
+    " Build RegEx.
+    DATA lv_regex TYPE string VALUE '('.
+
+    LOOP AT lt_mappings INTO DATA(ls_mapping).
+      IF sy-tabix > 1.
+        lv_regex = lv_regex && '|'.
+      ENDIF.
+
+      lv_regex = lv_regex && ls_mapping-pattern.
+    ENDLOOP.
+
+    lv_regex = lv_regex && ')'.
+
+    FIND ALL OCCURRENCES OF REGEX lv_regex IN iv_value RESULTS DATA(lt_results).
 
     DATA: lt_parts           TYPE TABLE OF ts_part,
           lv_part            TYPE string,
