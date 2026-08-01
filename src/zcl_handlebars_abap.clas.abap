@@ -614,9 +614,26 @@ CLASS zcl_handlebars_abap DEFINITION
     TYPES: BEGIN OF ts_backend_block_stack_block,
              block               TYPE REF TO ts_parser_block,
              args                TYPE tt_backend_block_args,
+
+             " If true, the current block is a pseudo block,
+             " meaning it only contains args but no real block
+             " information. A pseudo block is pushed at the
+             " beginning of the template process to have a
+             " root. It may also be pushed when partials are
+             " being used (depending if a new context is created).
              pseudo              TYPE abap_bool,
+
+             " Holds the original context passed to a block helper.
+             " It's used to compare the original context with the
+             " context passed by the helper to decide if the
+             " context as changed.
              original_context    TYPE REF TO data,
+
+             " If true, the context within a block did not change
+             " compared to its previous context. This is important
+             " to know when evaluating relative paths.
              context_not_changed TYPE abap_bool,
+
            END OF ts_backend_block_stack_block.
 
     TYPES: tt_backend_block_stack TYPE TABLE OF ts_backend_block_stack_block.
@@ -760,7 +777,6 @@ CLASS zcl_handlebars_abap DEFINITION
       RETURNING
         VALUE(rv_length) TYPE i.
 
-
     METHODS backend_push_block
       IMPORTING
         VALUE(is_block) TYPE ts_backend_block_stack_block.
@@ -800,6 +816,13 @@ CLASS zcl_handlebars_abap DEFINITION
         ir_struct       TYPE REF TO data
       RETURNING
         VALUE(rs_token) TYPE ts_tokenizer_token.
+
+    METHODS backend_deep_equals
+      IMPORTING
+        VALUE(ia_data_1) TYPE any
+        VALUE(ia_data_2) TYPE any
+      RETURNING
+        VALUE(rv_equals) TYPE abap_bool.
 
 ENDCLASS.
 
@@ -2808,13 +2831,9 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       DATA(lv_original_context_type) = zcl_handlebars_abap=>get_data_type( ia_data ).
       DATA(lv_new_context_type) = zcl_handlebars_abap=>get_data_type( lr_original_context ).
 
-      lr_block->context_not_changed = COND #(
-        WHEN
-          lv_original_context_type-is_ref = lv_new_context_type-is_ref AND
-          lv_original_context_type-name   = lv_new_context_type-name   AND
-          ia_data                         = lr_original_context
-        THEN abap_true
-        ELSE abap_false
+      lr_block->context_not_changed = me->backend_deep_equals(
+        ia_data_1 = lr_original_context
+        ia_data_2 = ia_data
       ).
       DATA(lr_parser_block) = lr_block->block.
 
@@ -3555,4 +3574,91 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ENDIF.
     ENDIF.
   ENDMETHOD.
+
+
+  METHOD backend_deep_equals.
+    DATA(lv_original_type) = zcl_handlebars_abap=>get_data_type( ia_data_1 ).
+    DATA(lv_new_type) = zcl_handlebars_abap=>get_data_type( ia_data_2 ).
+    DATA(lv_is_ref) = lv_original_type-is_ref.
+    DATA(lv_name) = lv_original_type-name.
+
+    " Do a pre-check to ensure data is at least type- and reference-wise equal
+    " before going into the single properties.
+    IF (
+        lv_is_ref = lv_new_type-is_ref AND
+        lv_name   = lv_new_type-name
+    ).
+      FIELD-SYMBOLS: <data_1> TYPE any,
+                     <data_2> TYPE any.
+
+      " If data is a reference, resolve it.
+      IF lv_is_ref = abap_true.
+        ASSIGN ia_data_1->* TO <data_1>.
+        ASSIGN ia_data_2->* TO <data_2>.
+      ELSE.
+        ASSIGN ia_data_1 TO <data_1>.
+        ASSIGN ia_data_2 TO <data_2>.
+      ENDIF.
+
+      DATA(lo_descriptor) = cl_abap_datadescr=>describe_by_data( <data_1> ).
+
+      CASE lo_descriptor->kind.
+
+          " Compare table fields.
+        WHEN cl_abap_datadescr=>kind_table.
+          DATA(lo_table_descritor) = CAST cl_abap_tabledescr( lo_descriptor ).
+          FIELD-SYMBOLS: <table_1> TYPE table,
+                         <table_2> TYPE table.
+
+          ASSIGN <data_1> TO <table_1>.
+          ASSIGN <data_2> TO <table_2>.
+
+          LOOP AT <table_1> ASSIGNING FIELD-SYMBOL(<entry_1>).
+            READ TABLE <table_2> INDEX sy-tabix ASSIGNING FIELD-SYMBOL(<entry_2>).
+
+            rv_equals = me->backend_deep_equals(
+              ia_data_1 = <entry_1>
+              ia_data_2 = <entry_2>
+            ).
+
+            IF rv_equals = abap_false.
+              RETURN.
+            ENDIF.
+          ENDLOOP.
+
+          " Compare struct fields.
+        WHEN cl_abap_datadescr=>kind_struct.
+          DATA(lo_struct_descriptor) = CAST cl_abap_structdescr( lo_descriptor ).
+          DATA(lt_components) = lo_struct_descriptor->get_included_view( ).
+
+          LOOP AT lt_components INTO DATA(ls_component).
+            DATA(lv_key) = ls_component-name.
+
+            ASSIGN COMPONENT lv_key OF STRUCTURE <data_1> TO FIELD-SYMBOL(<component_1>).
+            ASSIGN COMPONENT lv_key OF STRUCTURE <data_2> TO FIELD-SYMBOL(<component_2>).
+
+            " If sy-subrc is not 0, the second struct doesn't contain the field.
+            IF sy-subrc = 0.
+              rv_equals = me->backend_deep_equals(
+                ia_data_1 = <component_1>
+                ia_data_2 = <component_2>
+              ).
+            ENDIF.
+
+            IF rv_equals = abap_false.
+              RETURN.
+            ENDIF.
+          ENDLOOP.
+
+          " Compare simple values.
+        WHEN OTHERS.
+          rv_equals = COND #(
+            WHEN <data_1> = <data_2>
+            THEN abap_true
+            ELSE abap_false
+          ).
+      ENDCASE.
+    ENDIF.
+  ENDMETHOD.
+
 ENDCLASS.
