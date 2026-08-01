@@ -3616,10 +3616,12 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           LOOP AT <table_1> ASSIGNING FIELD-SYMBOL(<entry_1>).
             READ TABLE <table_2> INDEX sy-tabix ASSIGNING FIELD-SYMBOL(<entry_2>).
 
-            rv_equals = me->backend_deep_equals(
-              ia_data_1 = <entry_1>
-              ia_data_2 = <entry_2>
-            ).
+            IF sy-subrc = 0.
+              rv_equals = me->backend_deep_equals(
+                ia_data_1 = <entry_1>
+                ia_data_2 = <entry_2>
+              ).
+            ENDIF.
 
             IF rv_equals = abap_false.
               RETURN.
@@ -3628,21 +3630,39 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
           " Compare struct fields.
         WHEN cl_abap_datadescr=>kind_struct.
-          DATA(lo_struct_descriptor) = CAST cl_abap_structdescr( lo_descriptor ).
-          DATA(lt_components) = lo_struct_descriptor->get_included_view( ).
+          DATA(lo_struct_descriptor_1) = CAST cl_abap_structdescr( lo_descriptor ).
+          DATA(lo_struct_descriptor_2) = CAST cl_abap_structdescr(
+            cl_abap_datadescr=>describe_by_data( <data_2> )
+          ).
+          DATA(lt_components_1) = lo_struct_descriptor_1->get_included_view( ).
+          DATA(lt_components_2) = lo_struct_descriptor_2->get_included_view( ).
 
-          LOOP AT lt_components INTO DATA(ls_component).
-            DATA(lv_key) = ls_component-name.
+          DATA lt_keys TYPE string_table.
 
+          LOOP AT lt_components_1 INTO DATA(ls_component_1).
+            APPEND ls_component_1-name TO lt_keys.
+          ENDLOOP.
+
+          LOOP AT lt_components_2 INTO DATA(ls_component_2).
+            APPEND ls_component_2-name TO lt_keys.
+          ENDLOOP.
+
+          SORT lt_keys.
+          DELETE ADJACENT DUPLICATES FROM lt_keys.
+
+          LOOP AT lt_keys INTO DATA(lv_key).
             ASSIGN COMPONENT lv_key OF STRUCTURE <data_1> TO FIELD-SYMBOL(<component_1>).
-            ASSIGN COMPONENT lv_key OF STRUCTURE <data_2> TO FIELD-SYMBOL(<component_2>).
 
-            " If sy-subrc is not 0, the second struct doesn't contain the field.
             IF sy-subrc = 0.
-              rv_equals = me->backend_deep_equals(
-                ia_data_1 = <component_1>
-                ia_data_2 = <component_2>
-              ).
+              ASSIGN COMPONENT lv_key OF STRUCTURE <data_2> TO FIELD-SYMBOL(<component_2>).
+
+              " If both structs contain the field, do a field comparison.
+              IF sy-subrc = 0.
+                rv_equals = me->backend_deep_equals(
+                  ia_data_1 = <component_1>
+                  ia_data_2 = <component_2>
+                ).
+              ENDIF.
             ENDIF.
 
             IF rv_equals = abap_false.
