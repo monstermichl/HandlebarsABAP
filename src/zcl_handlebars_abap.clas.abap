@@ -2694,6 +2694,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
       lr_data = lr_merged_data.
       me->backend_push_pseudo_block( lr_merged_data ).
+      lv_new_context_created = abap_true.
     ENDIF.
 
     DATA(lr_found_partial) = lr_find_partial_result-partial.
