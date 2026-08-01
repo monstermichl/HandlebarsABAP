@@ -284,6 +284,7 @@ CLASS zcl_handlebars_abap DEFINITION
 
     CONSTANTS: e_token_type_unknown         TYPE e_tokenizer_token_type VALUE 'unknown',
                e_token_type_text            TYPE e_tokenizer_token_type VALUE 'text',
+               e_token_type_newline         TYPE e_tokenizer_token_type VALUE 'newline',
                e_token_type_hashtag         TYPE e_tokenizer_token_type VALUE 'hashtag',
                e_token_type_slash           TYPE e_tokenizer_token_type VALUE 'slash',
                e_token_type_o_round_bracket TYPE e_tokenizer_token_type VALUE 'opening round bracket',
@@ -302,6 +303,7 @@ CLASS zcl_handlebars_abap DEFINITION
                e_token_type_path            TYPE e_tokenizer_token_type VALUE 'path',
                e_token_type_hash_key        TYPE e_tokenizer_token_type VALUE 'hash key',
                e_token_type_space           TYPE e_tokenizer_token_type VALUE 'space',
+               e_token_type_text_space      TYPE e_tokenizer_token_type VALUE 'text space',
                e_token_type_eop             TYPE e_tokenizer_token_type VALUE 'end of placeholder',
                e_token_type_eof             TYPE e_tokenizer_token_type VALUE 'end of file'.
 
@@ -355,6 +357,13 @@ CLASS zcl_handlebars_abap DEFINITION
         VALUE(iv_value)    TYPE string
         VALUE(iv_position) TYPE i
         VALUE(iv_type)     TYPE e_tokenizer_token_type
+      CHANGING
+        VALUE(ct_tokens)   TYPE tt_tokenizer_tokens.
+
+    METHODS tokenizer_add_text_token
+      IMPORTING
+        VALUE(iv_value)    TYPE string
+        VALUE(iv_position) TYPE i
       CHANGING
         VALUE(ct_tokens)   TYPE tt_tokenizer_tokens.
 
@@ -1291,11 +1300,12 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       lv_text = iv_template_string+lv_previous_offset(lv_text_length).
 
       IF lv_text_length > 0.
-        me->tokenizer_add_token(
+        me->tokenizer_add_text_token(
           EXPORTING
-            iv_value  = lv_text iv_position = lv_previous_offset iv_type = e_token_type_text
+            iv_value    = lv_text
+            iv_position = lv_previous_offset
           CHANGING
-            ct_tokens = lt_temporary_tokens
+            ct_tokens   = lt_temporary_tokens
         ).
       ENDIF.
 
@@ -1487,11 +1497,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     lv_text_length = strlen( lv_text ).
 
     IF lv_text_length > 0.
-      me->tokenizer_add_token(
+      me->tokenizer_add_text_token(
         EXPORTING
-          iv_value = lv_text
+          iv_value    = lv_text
           iv_position = lv_previous_offset
-          iv_type = e_token_type_text
         CHANGING
           ct_tokens   = me->mt_tokenizer_tokens
       ).
@@ -1593,6 +1602,111 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD tokenizer_add_text_token.
+    CONSTANTS: c_newline_pattern TYPE string VALUE '\r?\n',
+               c_space_pattern   TYPE string VALUE '\s+',
+               c_tab_pattern     TYPE string VALUE '\t+'.
+
+    TYPES: BEGIN OF ts_mapping,
+             pattern TYPE string,
+             type    TYPE e_tokenizer_token_type,
+           END OF ts_mapping.
+
+    TYPES tt_mapping TYPE STANDARD TABLE OF ts_mapping WITH KEY pattern.
+
+    TYPES: BEGIN OF ts_part,
+             position TYPE i,
+             value    TYPE string,
+           END OF ts_part.
+
+    FIND ALL OCCURRENCES OF REGEX |({ c_newline_pattern }\|{ c_space_pattern }\|{ c_tab_pattern })| IN iv_value RESULTS DATA(lt_results).
+
+    DATA: lt_parts           TYPE TABLE OF ts_part,
+          lv_part            TYPE string,
+          lv_previous_offset TYPE i.
+
+    " Separate text into newlines, spaces and text.
+    LOOP AT lt_results INTO DATA(ls_result).
+      DATA(lv_offset) = ls_result-offset.
+      DATA(lv_length) = ls_result-length.
+
+      " Make sure everything in between matches is also added.
+      IF lv_previous_offset < lv_offset.
+        lv_part = substring(
+          val = iv_value
+          off = lv_previous_offset
+          len = lv_offset - lv_previous_offset
+        ).
+
+        APPEND VALUE #(
+          position = lv_previous_offset
+          value    = lv_part
+        ) TO lt_parts.
+      ENDIF.
+
+      lv_part = substring(
+        val = iv_value
+        off = lv_offset
+        len = lv_length
+      ).
+
+      APPEND VALUE #(
+        position = lv_offset
+        value    = lv_part
+      ) TO lt_parts.
+
+      lv_previous_offset = lv_offset + lv_length.
+    ENDLOOP.
+
+    DATA(lv_value_length) = strlen( iv_value ).
+
+    " Make sure everything after the matches is also added.
+    IF lv_previous_offset < lv_value_length.
+      lv_part = substring(
+        val = iv_value
+        off = lv_previous_offset
+        len = lv_value_length - lv_previous_offset
+      ).
+
+      APPEND VALUE #(
+        position = lv_previous_offset
+        value    = lv_part
+      ) TO lt_parts.
+    ENDIF.
+
+    DATA(lt_mappings) = VALUE tt_mapping(
+      ( pattern = c_newline_pattern type = e_token_type_newline    )
+      ( pattern = c_space_pattern   type = e_token_type_text_space )
+      ( pattern = c_tab_pattern     type = e_token_type_text_space )
+    ).
+
+    " Create the tokens.
+    LOOP AT lt_parts INTO DATA(ls_part).
+      DATA(lv_token_type) = e_token_type_text.
+
+      lv_part = ls_part-value.
+
+      LOOP AT lt_mappings INTO DATA(ls_mapping).
+        FIND REGEX ls_mapping-pattern IN lv_part.
+
+        IF sy-subrc = 0.
+          lv_token_type = ls_mapping-type.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+
+      me->tokenizer_add_token(
+        EXPORTING
+          iv_value    = lv_part
+          iv_position = iv_position + ls_part-position
+          iv_type     = lv_token_type
+        CHANGING
+          ct_tokens   = ct_tokens
+      ).
+    ENDLOOP.
+  ENDMETHOD.
+
+
   METHOD parser_parse.
     me->mv_parser_index = 1.
 
@@ -1678,8 +1792,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
             lv_valid = abap_false.
         ENDCASE.
 
-        " If the current token is a text-token, its value is used directly.
-      WHEN e_token_type_text.
+        " If the current token is a text-, newline- or space-token, its value is used directly.
+      WHEN e_token_type_text OR e_token_type_newline OR e_token_type_text_space.
         me->parser_eat( ).
         ls_result-stmt = NEW ts_parser_text( value = ls_token-value token = ls_token ).
         lv_expect_eop = abap_false.
