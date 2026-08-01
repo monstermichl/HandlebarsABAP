@@ -471,8 +471,10 @@ CLASS zcl_handlebars_abap DEFINITION
     TYPES:END OF ts_parser_inline_helper.
 
     TYPES: BEGIN OF ts_parser_eval_result,
-             error TYPE string,
-             stmt  TYPE tr_parser_statement,
+             error           TYPE string,
+             stmt            TYPE tr_parser_statement,
+             standalone_pre  TYPE abap_bool,
+             standalone_post TYPE abap_bool,
            END OF ts_parser_eval_result.
 
     TYPES: BEGIN OF ts_parser_eval_results,
@@ -584,6 +586,24 @@ CLASS zcl_handlebars_abap DEFINITION
         lv_peek         TYPE abap_bool OPTIONAL
       RETURNING
         VALUE(rv_error) TYPE string.
+
+    METHODS parser_pre_check_standalone
+      RETURNING
+        VALUE(rv_standalone) TYPE abap_bool.
+
+    METHODS parser_post_check_standalone
+      IMPORTING
+        VALUE(iv_offset)     TYPE i DEFAULT 0
+      RETURNING
+        VALUE(rv_standalone) TYPE abap_bool.
+
+    METHODS parser_process_standalone_pre
+      IMPORTING
+        VALUE(iv_standalone) TYPE abap_bool
+      CHANGING
+        lt_statements        TYPE tt_parser_statements.
+
+    METHODS parser_process_standalone_post.
 
     " .:: Backend section
     TYPES: e_backend_data_kinds TYPE string.
@@ -1737,7 +1757,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     CLEAR rs_token.
 
-    IF lv_index <= lines( me->mt_tokenizer_tokens ).
+    IF lv_index > 0 AND lv_index <= lines( me->mt_tokenizer_tokens ).
       rs_token = me->mt_tokenizer_tokens[ lv_index ].
     ENDIF.
   ENDMETHOD.
@@ -1821,6 +1841,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         rs_result-error = lv_error.
         RETURN.
       ENDIF.
+
+      IF ls_result-standalone_post = abap_true.
+        me->parser_process_standalone_post( ).
+      ENDIF.
     ENDIF.
 
     IF lv_valid <> abap_true.
@@ -1857,6 +1881,13 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         rs_results-error = lv_error.
         RETURN.
       ENDIF.
+
+      me->parser_process_standalone_pre(
+        EXPORTING
+          iv_standalone = ls_result-standalone_post
+        CHANGING
+          lt_statements = lt_statements
+      ).
 
       APPEND ls_result-stmt TO lt_statements.
     ENDDO.
@@ -1955,6 +1986,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD parser_eval_block.
+    DATA(lv_front_standalone) = me->parser_pre_check_standalone( ).
     DATA(ls_token) = me->parser_eat( ).
     DATA(ls_start_token) = ls_token.
 
@@ -2048,6 +2080,13 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    DATA(lv_back_standalone) = me->parser_post_check_standalone( ).
+
+    IF lv_front_standalone = abap_true AND lv_back_standalone = abap_true.
+      me->parser_process_standalone_post( ).
+    ENDIF.
+
+    rs_result-standalone_pre = xsdbool( lv_front_standalone = abap_true AND lv_back_standalone = abap_true ).
     ls_token = me->parser_peek( ).
 
     " Create instance of ts_parser_block on the heap.
@@ -2060,7 +2099,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       token  = ls_start_token
     ).
 
-    " Only evaluate block content if not termination token was found.
+    " Only evaluate block content if no termination token was found.
     IF ls_token-type <> e_token_type_slash.
       " Evaluate block-statements.
       DATA(ls_stmts_result) = me->parser_eval_stmts(
@@ -2078,6 +2117,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
       " If the statements were terminated by an else, parse the rest.
       IF ls_token-type = e_token_type_else.
+        DATA(lv_else_front_standalone) = me->parser_pre_check_standalone( ).
         me->parser_eat( ).
 
         " Expect end-of-placeholder token.
@@ -2086,6 +2126,22 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         IF lv_error IS NOT INITIAL.
           rs_result-error = lv_error.
           RETURN.
+        ENDIF.
+
+        DATA(lv_else_back_standalone) = me->parser_post_check_standalone( ).
+
+        IF lv_else_front_standalone = abap_true AND lv_else_back_standalone = abap_true.
+          me->parser_process_standalone_post( ).
+        ENDIF.
+
+        " If else block is standalone, make sure there are no leading spaces.
+        IF lv_else_front_standalone = abap_true AND lv_else_back_standalone = abap_true.
+          me->parser_process_standalone_pre(
+            EXPORTING
+              iv_standalone = abap_true
+            CHANGING
+              lt_statements = ls_block->body-statements
+          ).
         ENDIF.
 
         " Evaluate else-statements.
@@ -2103,6 +2159,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ENDIF.
     ENDIF.
 
+    lv_front_standalone = me->parser_pre_check_standalone( ).
     ls_token = me->parser_eat( ).
 
     " Make sure block is terminated with a slash...
@@ -2119,6 +2176,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     IF ls_token-type <> e_token_type_path OR lv_end_helper_name <> lv_start_helper_name.
       rs_result-error = me->parser_build_expected_error( iv_error = |{ lv_start_helper_name } but got { lv_end_helper_name }| is_token = ls_token ).
       RETURN.
+    ENDIF.
+
+    IF lv_front_standalone = abap_true.
+      rs_result-standalone_post = me->parser_post_check_standalone( 1 ). " Offset of 1 because EOP-token is evaluated by calling method...
     ENDIF.
 
     rs_result-stmt = ls_block.
@@ -2404,6 +2465,91 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     IF ls_token-type <> e_token_type_eop.
       rv_error = me->parser_build_expected_error( iv_error = 'End of placeholder' is_token = ls_token ).
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD parser_pre_check_standalone.
+    DATA(lv_offset) = 0.
+    rv_standalone = abap_true.
+
+    DO.
+      lv_offset = lv_offset - 1.
+
+      DATA(ls_token) = parser_peek_at( lv_offset ).
+      DATA(lv_token_type) = ls_token-type.
+
+      IF ls_token IS INITIAL OR lv_token_type = e_token_type_newline.
+        EXIT.
+      ELSEIF lv_token_type = e_token_type_text_space.
+        " Do nothing.
+      ELSE.
+        rv_standalone = abap_false.
+        EXIT.
+      ENDIF.
+    ENDDO.
+  ENDMETHOD.
+
+
+  METHOD parser_post_check_standalone.
+    rv_standalone = abap_true.
+
+    DO.
+      DATA(ls_token) = parser_peek_at( iv_offset ).
+      DATA(lv_token_type) = ls_token-type.
+
+      IF ls_token IS INITIAL OR lv_token_type = e_token_type_newline.
+        EXIT.
+      ELSEIF lv_token_type = e_token_type_text_space.
+        " Do nothing.
+      ELSE.
+        rv_standalone = abap_false.
+        EXIT.
+      ENDIF.
+
+      iv_offset = iv_offset + 1.
+    ENDDO.
+  ENDMETHOD.
+
+
+  METHOD parser_process_standalone_pre.
+    " If evaluated statement is standalone, remove leading spaces.
+    IF iv_standalone = abap_true.
+      DO.
+        DATA(lv_lines) = lines( lt_statements ).
+        READ TABLE lt_statements INTO DATA(ls_previous_stmt) INDEX lv_lines.
+
+        IF sy-subrc <> 0.
+          EXIT.
+        ENDIF.
+
+        FIELD-SYMBOLS <previous_token> TYPE ts_tokenizer_token.
+
+        ASSIGN COMPONENT 'TOKEN' OF STRUCTURE ls_previous_stmt->* TO <previous_token>.
+
+        IF sy-subrc = 0 AND <previous_token>-type = e_token_type_text_space.
+          DELETE lt_statements INDEX lv_lines.
+        ELSE.
+          EXIT.
+        ENDIF.
+      ENDDO.
+    ENDIF.
+  ENDMETHOD.
+
+
+  METHOD parser_process_standalone_post.
+    " Skip spaces.
+    DO.
+      DATA(ls_token) = me->parser_peek( ).
+
+      IF ls_token-type = e_token_type_text_space.
+        me->mv_parser_index = me->mv_parser_index + 1.
+      ELSE.
+        EXIT.
+      ENDIF.
+    ENDDO.
+
+    " Skip newline.
+    me->mv_parser_index = me->mv_parser_index + 1.
   ENDMETHOD.
 
 
