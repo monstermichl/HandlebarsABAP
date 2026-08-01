@@ -615,13 +615,16 @@ CLASS zcl_handlebars_abap DEFINITION
              block               TYPE REF TO ts_parser_block,
              args                TYPE tt_backend_block_args,
 
+             " True if the block is the root block.
+             is_root             TYPE abap_bool,
+
              " If true, the current block is a pseudo block,
              " meaning it only contains args but no real block
              " information. A pseudo block is pushed at the
              " beginning of the template process to have a
              " root. It may also be pushed when partials are
              " being used (depending if a new context is created).
-             pseudo              TYPE abap_bool,
+             is_pseudo           TYPE abap_bool,
 
              " Holds the original context passed to a block helper.
              " It's used to compare the original context with the
@@ -3355,8 +3358,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
   METHOD backend_push_pseudo_block.
     me->backend_push_block( VALUE #(
-      pseudo = abap_true
-      args   = VALUE #(
+      args = VALUE #(
         ( data = ir_data )
       )
     ) ).
@@ -3389,6 +3391,15 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
     IF sy-subrc <> 0.
       FREE er_block.
+    ELSE.
+      " Set additional information.
+      IF iv_index = 1.
+        er_block->is_root = abap_true.
+      ENDIF.
+
+      IF er_block->block IS NOT BOUND.
+        er_block->is_pseudo = abap_true.
+      ENDIF.
     ENDIF.
   ENDMETHOD.
 
@@ -3405,7 +3416,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           ev_fallback = DATA(lv_fallback)
       ).
 
-      IF lr_block->pseudo = abap_true AND iv_include_pseudo = abap_false.
+      IF lr_block->is_pseudo = abap_true AND iv_include_pseudo = abap_false.
         IF lv_fallback = abap_true.
           EXIT.
         ENDIF.
