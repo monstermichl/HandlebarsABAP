@@ -75,9 +75,12 @@ CLASS zcl_handlebars_abap DEFINITION
            END OF ts_options.
 
     TYPES: BEGIN OF ts_template_options,
-             " If true, a partial can access it's parent's context
-             " via relative paths.
-             allow_partial_par_ctx_access TYPE abap_bool,
+             " If true, a partial can access it's parent's context via relative paths.
+             partials_allow_par_ctx_access TYPE abap_bool,
+
+             " If true, space in front of a standalone partial is not added to its content. See:
+             " https://github.com/handlebars-lang/handlebars.js/issues/985#issuecomment-85577104
+             partials_prevent_indent       TYPE abap_bool,
            END OF ts_template_options.
 
 
@@ -450,7 +453,8 @@ CLASS zcl_handlebars_abap DEFINITION
     TYPES: BEGIN OF ts_parser_partial,
              name    TYPE tr_parser_expression,
              context TYPE tr_parser_expression,
-             hashes  TYPE tt_parser_hashes.
+             hashes  TYPE tt_parser_hashes,
+             spaces  TYPE i.
              INCLUDE TYPE ts_parser_stmt_base.
     TYPES: END OF ts_parser_partial.
 
@@ -597,6 +601,8 @@ CLASS zcl_handlebars_abap DEFINITION
         VALUE(rv_error) TYPE string.
 
     METHODS parser_pre_check_standalone
+      CHANGING
+        cv_spaces            TYPE i OPTIONAL
       RETURNING
         VALUE(rv_standalone) TYPE abap_bool.
 
@@ -680,6 +686,7 @@ CLASS zcl_handlebars_abap DEFINITION
     TYPES: tt_backend_block_stack TYPE TABLE OF ts_backend_block_stack_block.
 
     DATA: ms_template_options      TYPE ts_template_options,
+          mv_indent                TYPE i,
           mt_backend_block_stack   TYPE tt_backend_block_stack,
           mv_backend_inline_helper TYPE ts_parser_inline_helper.
 
@@ -688,6 +695,7 @@ CLASS zcl_handlebars_abap DEFINITION
         VALUE(ir_data)    TYPE REF TO data OPTIONAL
         VALUE(ir_parent)  TYPE REF TO zcl_handlebars_abap OPTIONAL
         VALUE(is_options) TYPE ts_template_options OPTIONAL
+        VALUE(iv_indent)  TYPE i OPTIONAL
       RETURNING
         VALUE(rs_result)  TYPE ts_template_result.
 
@@ -998,6 +1006,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
   METHOD template_internal.
     me->ms_template_options = is_options.
+    me->mv_indent           = iv_indent.
 
     IF ir_parent IS NOT BOUND.
       " Push a pseudo block to have a base for the whole template.
@@ -1022,7 +1031,47 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       me->backend_pop_block( ).
     ENDIF.
 
-    rs_result-text = ls_result-text.
+    DATA(lv_text) = ls_result-text.
+
+    " If indent is greater 0 split text and apply indent to every every line.
+    IF iv_indent > 0.
+      DATA lv_indent_string TYPE string.
+
+      WHILE strlen( lv_indent_string ) < iv_indent.
+        lv_indent_string = lv_indent_string && ` `.
+      ENDWHILE.
+
+      " First, find line ending characters.
+      FIND REGEX '\r?\n' IN lv_text RESULTS DATA(ls_match_result).
+
+      IF ls_match_result IS NOT INITIAL.
+        DATA lv_indented_text TYPE string.
+
+        WHILE strlen( lv_indent_string ) < iv_indent.
+          lv_indent_string = lv_indent_string && ` `.
+        ENDWHILE.
+
+        DATA(lv_line_ending) = substring( val = lv_text off = ls_match_result-offset len = ls_match_result-length ).
+
+        " Second, split text at line ending.
+        SPLIT lv_text AT lv_line_ending INTO TABLE DATA(lt_lines).
+
+        " Third, apply indent to all lines.
+        LOOP AT lt_lines INTO DATA(lv_line).
+          IF sy-tabix > 1.
+            lv_indented_text = lv_indented_text && lv_line_ending.
+          ENDIF.
+
+          lv_indented_text = lv_indented_text && lv_line.
+        ENDLOOP.
+
+        lv_text = lv_indented_text.
+      ELSE.
+        lv_text = lv_indent_string && lv_text.
+      ENDIF.
+    ENDIF.
+
+    rs_result-text = lv_text.
   ENDMETHOD.
 
 
@@ -1946,7 +1995,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD parser_eval_partial.
-    DATA(lv_front_standalone) = me->parser_pre_check_standalone( ).
+    DATA(lv_spaces) = 0.
+    DATA(lv_front_standalone) = me->parser_pre_check_standalone(
+      CHANGING
+        cv_spaces = lv_spaces
+    ).
     DATA(ls_token) = me->parser_eat( ).
     DATA(ls_start_token) = ls_token.
 
@@ -1957,6 +2010,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     ls_token = me->parser_peek( ).
+
     DATA(lr_partial) = NEW ts_parser_partial( token = ls_token ).
 
     CASE ls_token-type.
@@ -2017,6 +2071,12 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     IF lv_front_standalone = abap_true AND me->parser_post_check_standalone( 1 ) = abap_true.
       rs_result-standalone_pre  = lv_front_standalone.
       rs_result-standalone_post = abap_true.
+
+      lr_partial->spaces = COND #(
+        WHEN me->ms_template_options-partials_prevent_indent = abap_true
+        THEN 0
+        ELSE lv_spaces
+      ).
     ENDIF.
 
     lr_partial->hashes = ls_arguments_result-hashes.
@@ -2520,7 +2580,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       IF ls_token IS INITIAL OR lv_token_type = e_token_type_newline.
         EXIT.
       ELSEIF lv_token_type = e_token_type_text_space.
-        " Do nothing.
+        " Just count spaces in case it's need by the caller.
+        cv_spaces = cv_spaces + strlen( ls_token-value ).
       ELSE.
         rv_standalone = abap_false.
         EXIT.
@@ -3006,7 +3067,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DATA lr_passed_parent TYPE REF TO zcl_handlebars_abap.
 
     " Allow access of parent context in partial only if it was explicitly specified.
-    IF ls_options-allow_partial_par_ctx_access = abap_true.
+    IF ls_options-partials_allow_par_ctx_access = abap_true.
       lr_passed_parent = me.
     ENDIF.
 
@@ -3014,6 +3075,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ir_data    = lr_data
       ir_parent  = lr_passed_parent
       is_options = ls_options
+      iv_indent  = me->mv_indent + ir_partial->spaces
     ).
 
     " Pop context "block" if necessary.
