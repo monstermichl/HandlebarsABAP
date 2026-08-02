@@ -1295,7 +1295,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
                c_undefined       TYPE string VALUE 'undefined',
                c_number_pattern  TYPE string VALUE '(-|\+)?\d+(.\d+)?',
                c_path_pattern_1  TYPE string VALUE '(\.\.\/)*\w+(\.\w+)*',
-               c_path_pattern_2  TYPE string VALUE '(\.\.\/)',
+               c_path_pattern_2  TYPE string VALUE '(\.\.)(\/\.\.)*',
                c_path_pattern_3  TYPE string VALUE '\.'.
 
     DATA: lv_previous_offset TYPE i VALUE 0,
@@ -3424,36 +3424,32 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDDO.
 
     " Go back the amount of relative steps.
-    WHILE lv_index <= lines( lt_parts ).
-      IF lt_parts[ 1 ] = c_relative.
-        lv_block_index = lv_original_block_index - lv_index.
+    WHILE lines( lt_parts ) > 0 AND lt_parts[ 1 ] = c_relative.
+      lv_block_index = lv_original_block_index - lv_index.
 
-        me->backend_get_block(
-          EXPORTING
-            iv_index    = lv_block_index
-          IMPORTING
-            er_block    = lr_block
-            ev_fallback = lv_fallback
-        ).
+      me->backend_get_block(
+        EXPORTING
+          iv_index    = lv_block_index
+        IMPORTING
+          er_block    = lr_block
+          ev_fallback = lv_fallback
+      ).
 
-        DELETE lt_parts INDEX 1.
+      DELETE lt_parts INDEX 1.
 
-        " Fallback block certainly has data.
-        IF lv_fallback = abap_true.
-          lv_undefined = abap_true.
-          EXIT.
-        ENDIF.
-
-        DATA(lt_block_args) = lr_block->args.
-
-        IF lines( lt_block_args ) > 0.
-          lr_this = lt_block_args[ 1 ]-data.
-        ENDIF.
-
-        lv_index = lv_index + 1.
-      ELSE.
+      " Fallback block certainly has data.
+      IF lv_fallback = abap_true.
+        lv_undefined = abap_true.
         EXIT.
       ENDIF.
+
+      DATA(lt_block_args) = lr_block->args.
+
+      IF lines( lt_block_args ) > 0.
+        lr_this = lt_block_args[ 1 ]-data.
+      ENDIF.
+
+      lv_index = lv_index + 1.
     ENDWHILE.
 
     " If no data has been found, reset block index.
