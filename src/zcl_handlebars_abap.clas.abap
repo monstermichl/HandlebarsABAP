@@ -289,8 +289,7 @@ CLASS zcl_handlebars_abap DEFINITION
 
     METHODS constructor
       IMPORTING
-        VALUE(iv_singleton) TYPE abap_bool
-        VALUE(ir_parent)    TYPE REF TO zcl_handlebars_abap OPTIONAL.
+        VALUE(iv_singleton) TYPE abap_bool.
 
     " .:: Tokenizer section.
     TYPES: e_tokenizer_token_type TYPE string.
@@ -1043,7 +1042,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ENDWHILE.
 
       " First, find line ending characters.
-      FIND REGEX '\r?\n' IN lv_text RESULTS DATA(ls_match_result).
+      FIND FIRST OCCURRENCE OF REGEX '\r?\n' IN lv_text RESULTS DATA(ls_match_result).
 
       IF ls_match_result IS NOT INITIAL.
         DATA lv_indented_text TYPE string.
@@ -1303,7 +1302,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
       " Add globally registered partials.
       LOOP AT lr_helper_instance->mt_partials INTO DATA(ls_partial).
-        APPEND ls_partial TO me->mt_partials ASSIGNING FIELD-SYMBOL(<partial>).
+        APPEND ls_partial TO me->mt_partials.
       ENDLOOP.
 
       " Register default block-helpers.
@@ -2002,7 +2001,6 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         cv_spaces = lv_spaces
     ).
     DATA(ls_token) = me->parser_eat( ).
-    DATA(ls_start_token) = ls_token.
 
     " Make sure block starts with >.
     IF ls_token-type <> e_token_type_greater.
@@ -2186,7 +2184,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       me->parser_process_standalone_post( ).
     ENDIF.
 
-    rs_result-standalone_pre = xsdbool( lv_front_standalone = abap_true AND lv_back_standalone = abap_true ).
+    rs_result-standalone_pre = COND #(
+      WHEN lv_front_standalone = abap_true AND lv_back_standalone = abap_true
+      THEN abap_true
+      ELSE abap_false
+    ).
     ls_token = me->parser_peek( ).
 
     " Create instance of ts_parser_block on the heap.
@@ -2625,7 +2627,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
         FIELD-SYMBOLS <previous_token> TYPE ts_tokenizer_token.
 
-        ASSIGN COMPONENT 'TOKEN' OF STRUCTURE ls_previous_stmt->* TO <previous_token>.
+        ASSIGN ls_previous_stmt->* TO FIELD-SYMBOL(<previous_stmt>).
+        ASSIGN COMPONENT 'TOKEN' OF STRUCTURE <previous_stmt> TO <previous_token>.
 
         IF sy-subrc = 0 AND <previous_token>-type = e_token_type_text_space.
           DELETE lt_statements INDEX lv_lines.
@@ -2915,7 +2918,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           RETURN.
         ENDIF.
 
-        lv_name = |{ ls_sub_expr_result-data->* }|.
+        ASSIGN ls_sub_expr_result-data->* TO FIELD-SYMBOL(<name>).
+        lv_name = |{ <name> }|.
 
       WHEN OTHERS.
         rs_result-error = me->backend_build_error( iv_error = |Unknown partial name type { lv_type }| is_token = ls_token ).
@@ -2961,17 +2965,9 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         RETURN.
       ENDIF.
 
-      DATA(ls_context_type) = me->get_data_type( lr_data ).
-      DATA lo_struct_descriptor TYPE REF TO cl_abap_structdescr.
+      DATA(lo_struct_descriptor) = CAST cl_abap_structdescr( cl_abap_datadescr=>describe_by_data_ref( lr_data ) ).
 
-      IF ls_context_type-is_ref = abap_true.
-        lo_struct_descriptor = CAST cl_abap_structdescr( cl_abap_datadescr=>describe_by_data_ref( lr_data ) ).
-      ELSE.
-        lo_struct_descriptor = CAST cl_abap_structdescr( cl_abap_datadescr=>describe_by_data( lr_data->* ) ).
-      ENDIF.
-
-      DATA: lr_hash_data           TYPE REF TO data,
-            lt_original_properties TYPE string_table,
+      DATA: lt_original_properties TYPE string_table,
             lt_components          TYPE cl_abap_structdescr=>component_table.
 
       " Get components by using get_included_view instead of get_components.
@@ -3043,8 +3039,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
       " Fill with original data.
       LOOP AT lt_original_properties INTO DATA(lv_original_property).
-        ASSIGN COMPONENT lv_original_property OF STRUCTURE lr_data->* TO FIELD-SYMBOL(<from_field>).
-        ASSIGN COMPONENT lv_original_property OF STRUCTURE lr_merged_data->* TO FIELD-SYMBOL(<to_field>).
+        ASSIGN lr_data->* TO FIELD-SYMBOL(<data>).
+        ASSIGN lr_merged_data->* TO FIELD-SYMBOL(<merged_data>).
+
+        ASSIGN COMPONENT lv_original_property OF STRUCTURE <data> TO FIELD-SYMBOL(<from_field>).
+        ASSIGN COMPONENT lv_original_property OF STRUCTURE <merged_data> TO FIELD-SYMBOL(<to_field>).
 
         <to_field> = <from_field>.
       ENDLOOP.
@@ -3053,8 +3052,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       LOOP AT lt_hashes INTO DATA(ls_hash).
         lv_key = ls_hash-key.
 
-        ASSIGN COMPONENT lv_key OF STRUCTURE lr_merged_data->* TO FIELD-SYMBOL(<field>).
-        <field> = lt_evaluated_hash_data[ key = lv_key ]-data->*.
+        ASSIGN lr_merged_data->* TO <merged_data>.
+        ASSIGN COMPONENT lv_key OF STRUCTURE <merged_data> TO FIELD-SYMBOL(<field>).
+        ASSIGN lt_evaluated_hash_data[ key = lv_key ]-data->* TO FIELD-SYMBOL(<field_value>).
+
+        <field> = <field_value>.
       ENDLOOP.
 
       lr_data = lr_merged_data.
@@ -3208,8 +3210,6 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ENDIF.
 
       DATA(lr_original_context) = lr_block->original_context.
-      DATA(lv_original_context_type) = zcl_handlebars_abap=>get_data_type( ia_data ).
-      DATA(lv_new_context_type) = zcl_handlebars_abap=>get_data_type( lr_original_context ).
 
       lr_block->context_not_changed = me->backend_deep_equals(
         ia_data_1 = lr_original_context
@@ -4007,7 +4007,6 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
           " Compare table fields.
         WHEN cl_abap_datadescr=>kind_table.
-          DATA(lo_table_descritor) = CAST cl_abap_tabledescr( lo_descriptor ).
           FIELD-SYMBOLS: <table_1> TYPE table,
                          <table_2> TYPE table.
 
