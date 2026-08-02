@@ -3440,7 +3440,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
         " Fallback block certainly has data.
         IF lv_fallback = abap_true.
-          lr_this = lr_block->args[ 1 ]-data.
+          lv_undefined = abap_true.
           EXIT.
         ENDIF.
 
