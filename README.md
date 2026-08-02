@@ -122,6 +122,35 @@ To compile a template stored via transaction SMW0, just pass the template name t
 {{/if}}
 ```
 
+### Partials
+```hbs
+{{! name partial}}
+{{firstName}} {{lastName}}
+```
+
+```hbs
+{{! card partial}}
+-----------------------------------------------
+Name: {{> name .}}
+Description: {{description}}
+Manager: {{#if is_manager}}Yes{{else}}No{{/if}}
+```
+
+```hbs
+{{> card this is_manager=true}}
+
+{{#each employees}}
+{{> card}}
+{{/each}}
+```
+
+#### How to register a partial
+Partials can either be registered globally, directly on the *zcl_handlebars_abap* class, using *register_partial_static* or on an instance which gets returned calling *compile*, using *register_partial*. Globally configured partials get added to the instances created. However, partials registered on the instances take precedence.
+
+```abap
+register_partial( iv_name = 'name' iv_template_string = '{{firstName}} {{lastName}}' ).
+```
+
 ### Custom (block) helpers
 It's possible to write and configure custom helpers like in HandlebarsJS but it works a bit differently. In HandlebarsJS a *fn*- and a *reverse*-function is passed to the helper which then need to be called to render either the block-content or the else-content. Since ABAP does not allow to pass functions to other functions or methods, the corresponding functions are part of the *zcl_handlebars_abap* class. The instance of the class gets passed to the helper and the helper needs to either invoke *fn* or *reverse* on that instance. The first argument that's passed to the corresponding function is considered the new context within the block (*this*).
 
@@ -146,7 +175,7 @@ The *rs_result*'s *text*-property specifies, what will be rendered to the output
 - *error*: Creates an error string that contains the position where the error occurred.
 
 #### How to register a custom helper
-To register a custom helper there are two possible ways. Either globally, directly on the *zcl_handlebars_abap* class or on an instance which gets returned calling *compile*. Globally configured helpers get added to the instances created. However, helpers registered on the instances take precedence.
+Custom helpers can either be registered globally, directly on the *zcl_handlebars_abap* class, using *register_helper_static* or on an instance which gets returned calling *compile*, using *register_helper*. Globally configured helpers get added to the instances created. However, helpers registered on the instances take precedence.
 
 ```abap
 register_helper( iv_name = 'hello' ir_helper = NEW zcl_handlebars_abap=>ts_object_helper( object = lo_helper_object method_name = 'hello_helper' ) ).
