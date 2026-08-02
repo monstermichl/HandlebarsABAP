@@ -589,15 +589,16 @@ CLASS zcl_handlebars_abap DEFINITION
 
     METHODS parser_eval_inline_helper
       IMPORTING
-        it_termination_token_types TYPE tt_tokenizer_token_types OPTIONAL
+        VALUE(it_termination_token_types) TYPE tt_tokenizer_token_types OPTIONAL
       RETURNING
-        VALUE(rs_result)           TYPE ts_parser_eval_result.
+        VALUE(rs_result)                  TYPE ts_parser_eval_result.
 
     METHODS parser_eval_expr
       IMPORTING
-        it_termination_token_types TYPE tt_tokenizer_token_types OPTIONAL
+        VALUE(it_termination_token_types) TYPE tt_tokenizer_token_types OPTIONAL
+        VALUE(iv_flat)                    TYPE abap_bool DEFAULT abap_false
       RETURNING
-        VALUE(rs_result)           TYPE ts_parser_eval_result.
+        VALUE(rs_result)                  TYPE ts_parser_eval_result.
 
     METHODS parser_eval_sub_expr
       RETURNING
@@ -2378,7 +2379,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
             READ TABLE lt_term_token_types TRANSPORTING NO FIELDS WITH KEY table_line = ls_next_token-type.
 
             " If the next token is not in termination token list, it's an inline-helper.
-            IF sy-subrc <> 0.
+            IF sy-subrc <> 0 AND iv_flat = abap_false.
               ls_result = me->parser_eval_inline_helper( lt_term_token_types ).
             ELSE.
               ls_result = me->parser_eval_path( ).
@@ -2422,7 +2423,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(ls_result) = parser_eval_expr( VALUE #( ( e_token_type_c_round_bracket ) ) ).
+    DATA(ls_result) = parser_eval_expr( it_termination_token_types = VALUE #( ( e_token_type_c_round_bracket ) ) ).
     DATA(lv_error) = ls_result-error.
 
     IF lv_error IS NOT INITIAL.
@@ -2552,7 +2553,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         ls_hash-key = ls_token-value.
         me->parser_eat( ).
       ELSE.
-        DATA(ls_expr_result) = me->parser_eval_expr( lt_temp_term_token_types ).
+        DATA(ls_expr_result) = me->parser_eval_expr(
+          it_termination_token_types = lt_temp_term_token_types
+          iv_flat                    = abap_true
+        ).
         DATA(lv_error) = ls_expr_result-error.
 
         IF lv_error IS NOT INITIAL.
