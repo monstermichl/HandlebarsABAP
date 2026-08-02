@@ -161,7 +161,7 @@ CLASS zcl_handlebars_abap DEFINITION
     "! @parameter ia_data | Data that shall be available within the block. The first entry is considered as 'this'.
     METHODS fn
       IMPORTING
-        ia_data          TYPE any OPTIONAL
+        VALUE(ia_data)   TYPE any OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
@@ -170,7 +170,7 @@ CLASS zcl_handlebars_abap DEFINITION
     "! @parameter ia_data | Data that shall be available within the block. The first entry is considered as 'this'.
     METHODS inverse
       IMPORTING
-        ia_data          TYPE any OPTIONAL
+        VALUE(ia_data)   TYPE any OPTIONAL
       RETURNING
         VALUE(rs_result) TYPE ts_text_result.
 
@@ -181,17 +181,17 @@ CLASS zcl_handlebars_abap DEFINITION
     "! @parameter rv_error       | Enhanced error string.
     METHODS error
       IMPORTING
-        iv_error        TYPE string
-        iv_param_index  TYPE i OPTIONAL
+        VALUE(iv_error)       TYPE string
+        VALUE(iv_param_index) TYPE i OPTIONAL
       RETURNING
-        VALUE(rv_error) TYPE string.
+        VALUE(rv_error)       TYPE string.
 
     "! Checks if the passed data can be considered truthy.
     "!
     "! @parameter ir_data | Data to check.
     METHODS is_truthy
       IMPORTING
-        ir_data          TYPE REF TO data
+        VALUE(ir_data)   TYPE REF TO data
       RETURNING
         VALUE(rs_result) TYPE ts_is_truthy_result.
 
