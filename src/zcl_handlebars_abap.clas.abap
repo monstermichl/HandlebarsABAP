@@ -333,7 +333,8 @@ CLASS zcl_handlebars_abap DEFINITION
                e_token_type_null            TYPE e_tokenizer_token_type VALUE 'null',
                e_token_type_undefined       TYPE e_tokenizer_token_type VALUE 'undefined',
                e_token_type_bool_literal    TYPE e_tokenizer_token_type VALUE 'bool literal',
-               e_token_type_number_literal  TYPE e_tokenizer_token_type VALUE 'number literal',
+               e_token_type_float_literal   TYPE e_tokenizer_token_type VALUE 'float literal',
+               e_token_type_int_literal     TYPE e_tokenizer_token_type VALUE 'int literal',
                e_token_type_string_literal  TYPE e_tokenizer_token_type VALUE 'string literal',
                e_token_type_path            TYPE e_tokenizer_token_type VALUE 'path',
                e_token_type_hash_key        TYPE e_tokenizer_token_type VALUE 'hash key',
@@ -429,6 +430,11 @@ CLASS zcl_handlebars_abap DEFINITION
              value TYPE float.
              INCLUDE TYPE ts_parser_stmt_base.
     TYPES: END OF ts_parser_float_literal.
+
+    TYPES: BEGIN OF ts_parser_int_literal,
+             value TYPE i.
+             INCLUDE TYPE ts_parser_stmt_base.
+    TYPES: END OF ts_parser_int_literal.
 
     TYPES: BEGIN OF ts_parser_string_literal,
              value TYPE string.
@@ -1366,7 +1372,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
                c_as              TYPE string VALUE 'as',
                c_null            TYPE string VALUE 'null',
                c_undefined       TYPE string VALUE 'undefined',
-               c_number_pattern  TYPE string VALUE '(-|\+)?\d+(.\d+)?',
+               c_float_pattern   TYPE string VALUE '(-|\+)?\d+(.\d+)',
+               c_int_pattern     TYPE string VALUE '(-|\+)?\d+',
                c_path_pattern_1  TYPE string VALUE '(\.\.\/)*\w+(\.\w+)*',
                c_path_pattern_2  TYPE string VALUE '(\.\.)(\/\.\.)*',
                c_path_pattern_3  TYPE string VALUE '\.'.
@@ -1387,16 +1394,17 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ).
 
     DATA(lt_keyword_mappings) = VALUE tt_token_mappings(
-      ( pattern = c_as             type = e_token_type_as             )
-      ( pattern = c_else           type = e_token_type_else           )
-      ( pattern = c_null           type = e_token_type_null           )
-      ( pattern = c_undefined      type = e_token_type_undefined      )
-      ( pattern = c_true           type = e_token_type_bool_literal   )
-      ( pattern = c_false          type = e_token_type_bool_literal   )
-      ( pattern = c_number_pattern type = e_token_type_number_literal )
-      ( pattern = c_path_pattern_1 type = e_token_type_path           )
-      ( pattern = c_path_pattern_2 type = e_token_type_path           )
-      ( pattern = c_path_pattern_3 type = e_token_type_path           )
+      ( pattern = c_as             type = e_token_type_as            )
+      ( pattern = c_else           type = e_token_type_else          )
+      ( pattern = c_null           type = e_token_type_null          )
+      ( pattern = c_undefined      type = e_token_type_undefined     )
+      ( pattern = c_true           type = e_token_type_bool_literal  )
+      ( pattern = c_false          type = e_token_type_bool_literal  )
+      ( pattern = c_float_pattern  type = e_token_type_float_literal )
+      ( pattern = c_int_pattern    type = e_token_type_int_literal   )
+      ( pattern = c_path_pattern_1 type = e_token_type_path          )
+      ( pattern = c_path_pattern_2 type = e_token_type_path          )
+      ( pattern = c_path_pattern_3 type = e_token_type_path          )
     ).
 
     DATA(lv_text_length) = 0.
@@ -2356,8 +2364,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         ).
         lr_data = NEW ts_parser_bool_literal( value = lv_bool_value token = ls_token ).
 
-      WHEN e_token_type_number_literal.
-        lr_data = NEW ts_parser_float_literal( value = CONV i( lv_value ) token = ls_token ).
+      WHEN e_token_type_float_literal.
+        lr_data = NEW ts_parser_float_literal( value = CONV f( lv_value ) token = ls_token ).
+
+      WHEN e_token_type_int_literal.
+        lr_data = NEW ts_parser_int_literal( value = CONV i( lv_value ) token = ls_token ).
 
       WHEN e_token_type_string_literal.
         lr_data = NEW ts_parser_string_literal( value = lv_value token = ls_token ).
@@ -2879,6 +2890,9 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
         lr_data = ir_stmt.
 
       WHEN 'ts_parser_float_literal'.
+        lr_data = ir_stmt.
+
+      WHEN 'ts_parser_int_literal'.
         lr_data = ir_stmt.
 
       WHEN 'ts_parser_string_literal'.
