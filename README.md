@@ -182,7 +182,7 @@ register_helper( iv_name = 'hello' ir_helper = NEW zcl_handlebars_abap=>ts_objec
 ```
 
 #### Function/Method signatures
-Helper functions/methods get passed the following properties **IMPORTANT**: Be aware of the breaking change introduced in v1.0.0 (https://github.com/monstermichl/HandlebarsABAP/issues/8#issuecomment-5072874511).
+Helper functions/methods get passed the following properties **IMPORTANT**: Be aware of the breaking changes introduced in [v1.0.0](https://github.com/monstermichl/HandlebarsABAP/issues/8#issuecomment-5072874511) and [v2.0.0](https://github.com/monstermichl/HandlebarsABAP/issues/23#issuecomment-5158051675).
 - args: The arguments passed to the helper.
 - options:
   - instance: The instance of the currently processed object on which to call *fn*/*reverse*.
@@ -191,15 +191,28 @@ Helper functions/methods get passed the following properties **IMPORTANT**: Be a
   - data: The current data of the block.
 
 ##### (Class-)methods
-This is the prefered way to implement helpers as it goes hand in hand with the modern approach of ABAP programming. Both static and object methods must implement the following signature to be callable.
+This is the prefered way to implement helpers as it goes hand in hand with the modern approach of ABAP programming. Both static- and object-methods must implement the following signature to be callable in case of a block helper.
 
 ```abap
-METHODS helper_method
+METHODS block_helper_method
   IMPORTING
     it_args          TYPE zcl_handlebars_abap=>tt_data
     is_options       TYPE zcl_handlebars_abap=>ts_options
   RETURNING
     VALUE(rs_result) TYPE zcl_handlebars_abap=>ts_text_result.
+```
+
+In case of an inline helper, the returned struct-type changes from *zcl_handlebars_abap=>ts_text_result* to *zcl_handlebars_abap=>ts_data_result*. This also applies to [Function modules](#function-modules) and [Forms](#forms)!
+
+**IMPORTANT**: Since *ts_data_result* contains a reference to the returned data, it is necessary to put the data on the heap instead of the stack (e.g. by using [CREATE DATA](https://help.sap.com/doc/abapdocu_816_index_htm/8.16/en-US/ABAPCREATE_DATA.html)).
+
+```abap
+METHODS inline_helper_method
+  IMPORTING
+    it_args          TYPE zcl_handlebars_abap=>tt_data
+    is_options       TYPE zcl_handlebars_abap=>ts_options
+  RETURNING
+    VALUE(rs_result) TYPE zcl_handlebars_abap=>ts_data_result.
 ```
 
 To register a class-method, use the *ts_class_helper* structure. E.g.
