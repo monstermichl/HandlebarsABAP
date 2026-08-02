@@ -48,6 +48,7 @@ CLASS ltcl_handlebars_abap DEFINITION FOR TESTING
     METHODS: template_standalone_success FOR TESTING.
     METHODS: template_structure_success FOR TESTING.
     METHODS: template_table_success FOR TESTING.
+    METHODS: template_lookup_success FOR TESTING.
     METHODS: template_partial_hash_success FOR TESTING.
     METHODS: template_partial_success FOR TESTING.
     METHODS: template_partial_indnt_success FOR TESTING.
@@ -229,6 +230,34 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_equals(
       exp = 'Hello Ing. Peter Hello Helene'
+      act = ls_template_result-text
+    ).
+  ENDMETHOD.
+
+
+  METHOD template_lookup_success.
+    DATA(ls_employee) = VALUE ts_person(
+      firstname = 'Marc'
+      lastname = 'Cucurella'
+    ).
+    DATA(ls_manager) = VALUE ts_manager(
+      firstname = 'Luis'
+      lastname = 'de la Fuente'
+      employees = VALUE #( ( ls_employee ) )
+    ).
+    DATA(ls_compile_result) = zcl_handlebars_abap=>compile(
+        '{{lookup . "firstname"}} manages {{lookup (lookup employees 0) "firstname"}}'
+    ).
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_compile_result-error ).
+
+    DATA(ls_template_result) = ls_compile_result-instance->template( ls_manager ).
+
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
+
+    CONDENSE ls_template_result-text.
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = |{ ls_manager-firstname } manages { ls_employee-firstname }|
       act = ls_template_result-text
     ).
   ENDMETHOD.
