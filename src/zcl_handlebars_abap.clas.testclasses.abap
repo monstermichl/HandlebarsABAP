@@ -45,11 +45,14 @@ CLASS ltcl_handlebars_abap DEFINITION FOR TESTING
 
     CONSTANTS: c_empty_error TYPE string VALUE ''.
 
+    METHODS: template_standalone_success FOR TESTING.
     METHODS: template_structure_success FOR TESTING.
     METHODS: template_table_success FOR TESTING.
     METHODS: template_partial_hash_success FOR TESTING.
     METHODS: template_partial_success FOR TESTING.
+    METHODS: template_partial_indnt_success FOR TESTING.
     METHODS: template_partial_ctx_success FOR TESTING.
+    METHODS: template_partial_cmplx_success FOR TESTING.
     METHODS: template_args_check_success FOR TESTING.
     METHODS: template_inline_check_success FOR TESTING.
     METHODS: template_custom_helper_success FOR TESTING.
@@ -110,6 +113,27 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
     ENDLOOP.
 
     CONDENSE rs_result-text.
+  ENDMETHOD.
+
+
+  METHOD template_standalone_success.
+    DATA(lv_newline) = cl_abap_char_utilities=>newline.
+    DATA(ls_compile_result) = zcl_handlebars_abap=>compile(
+      ` {{#if true}} `  && lv_newline &&
+        'Hello World'   && lv_newline &&
+      ` {{else}} `      && lv_newline &&
+        'Ok, ciao'      && lv_newline &&
+      ` {{/if}} `       && lv_newline
+    ).
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_compile_result-error ).
+
+    DATA(ls_template_result) = ls_compile_result-instance->template( ).
+
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = 'Hello World' && lv_newline
+      act = ls_template_result-text
+    ).
   ENDMETHOD.
 
 
@@ -205,14 +229,7 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
   METHOD template_partial_hash_success.
     CONSTANTS c_title TYPE string VALUE 'Mr.'.
 
-    zcl_handlebars_abap=>register_partial_static( iv_name = 'partial' iv_template_string = '{{title}} {{firstname}} {{lastname}} (manager: {{../../firstname}} {{../../lastname}})' ).
-
-    DATA(ls_compile_result) = zcl_handlebars_abap=>compile(
-      '{{#each employees}}' &
-        '{{> partial . title="' && c_title && '"}}' &
-      '{{/each}}'
-    ).
-    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_compile_result-error ).
+    zcl_handlebars_abap=>register_partial_static( iv_name = 'partial' iv_template_string = '{{title}} {{firstname}} {{lastname}} (manager: {{manager.firstname}} {{manager.lastname}})' ).
 
     DATA(ls_employee) = VALUE ts_person(
       firstname = 'Marc'
@@ -223,6 +240,13 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
       lastname = 'de la Fuente'
       employees = VALUE #( ( ls_employee ) )
     ).
+    DATA(ls_compile_result) = zcl_handlebars_abap=>compile(
+      '{{#each employees}}' &
+        '{{> partial . title="' && c_title && '" manager=..}}' &
+      '{{/each}}'
+    ).
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_compile_result-error ).
+
     DATA(ls_template_result) = ls_compile_result-instance->template( ls_manager ).
 
     cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
@@ -261,6 +285,45 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD template_partial_indnt_success.
+    zcl_handlebars_abap=>register_partial_static( iv_name = 'partial' iv_template_string = '{{firstname}} {{lastname}}' ).
+
+    DATA(lv_newline) = cl_abap_char_utilities=>newline.
+    DATA(ls_compile_result) = zcl_handlebars_abap=>compile(
+      `{{#each this}}`  && lv_newline &&
+      `  {{> partial}}` && lv_newline &&
+      ``                && lv_newline &&
+      `{{/each}}`
+    ).
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_compile_result-error ).
+
+    DATA(lt_employees) = VALUE tt_people(
+      (
+        firstName = 'Marc'
+        lastName  = 'Cucurella'
+      )
+      (
+        firstName = 'Lamine'
+        lastName  = 'Yamal'
+      )
+    ).
+    DATA(ls_template_result) = ls_compile_result-instance->template( lt_employees ).
+
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
+
+    DATA lv_expected TYPE string.
+
+    LOOP AT lt_employees INTO DATA(ls_employee).
+      lv_expected = |{ lv_expected }  { ls_employee-firstname } { ls_employee-lastname }\n|.
+    ENDLOOP.
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = lv_expected
+      act = ls_template_result-text
+    ).
+  ENDMETHOD.
+
+
   METHOD template_partial_ctx_success.
     zcl_handlebars_abap=>register_partial_static( iv_name = 'partial' iv_template_string = '{{this}}' ).
 
@@ -277,6 +340,88 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_equals(
       exp = 'Marc'
+      act = ls_template_result-text
+    ).
+  ENDMETHOD.
+
+
+  METHOD template_partial_cmplx_success.
+    DATA(lv_newline) = cl_abap_char_utilities=>newline.
+
+    DATA(lv_error) = zcl_handlebars_abap=>register_partial_static(
+      iv_name = 'formattedTitle'
+      iv_template_string = '{{#if front}}{{front}} {{/if}}{{name}}{{#if back}}, {{back}}{{/if}}'
+    ).
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = lv_error ).
+
+    lv_error = zcl_handlebars_abap=>register_partial_static(
+      iv_name = 'personCard'
+      iv_template_string =
+        'Card: {{#unless manager}}MANAGER{{else}}EMPLOYEE{{/unless}}'                && lv_newline &&
+        'Name: {{> formattedTitle front=title.front back=title.back name=lastName}}' && lv_newline &&
+        'First name: {{firstName}}'                                                  && lv_newline &&
+        'Role: {{role}}'                                                             && lv_newline &&
+        '{{#if manager}}'                                                            && lv_newline &&
+        'Manager: {{manager.firstName}} {{manager.lastName}}'                        && lv_newline &&
+        '{{/if}}'
+    ).
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = lv_error ).
+
+    DATA(ls_compile_result) = zcl_handlebars_abap=>compile(
+      '=== MANAGER ==='                                  && lv_newline &&
+      '{{> personCard . role="Head of Department"}}'     && lv_newline &&
+      ''                                                 && lv_newline &&
+      '=== EMPLOYEES ==='                                && lv_newline &&
+      '{{#each employees}}'                              && lv_newline &&
+      '{{> personCard . role="Team Member" manager=..}}' && lv_newline &&
+      ''                                                 && lv_newline &&
+      '{{/each}}'
+    ).
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_compile_result-error ).
+
+    DATA(ls_manager) = VALUE ts_manager(
+      firstName = 'Luis'
+      lastName  = 'de la Fuente'
+      title     = VALUE #( front = 'Dr.' back = 'PhD' )
+      employees = VALUE #(
+        (
+          firstName = 'Marc'
+          lastName  = 'Cucurella'
+          title     = VALUE #( front = 'B.Sc.' )
+        )
+        (
+          firstName = 'Lamine'
+          lastName  = 'Yamal'
+        )
+      )
+    ).
+    DATA(ls_template_result) = ls_compile_result-instance->template( ls_manager ).
+
+    cl_abap_unit_assert=>assert_equals( exp = c_empty_error act = ls_template_result-error ).
+
+    DATA(lv_expected) =
+      '=== MANAGER ==='             && lv_newline &&
+      'Card: MANAGER'               && lv_newline &&
+      'Name: Dr. de la Fuente, PhD' && lv_newline &&
+      'First name: Luis'            && lv_newline &&
+      'Role: Head of Department'    && lv_newline &&
+      ''                            && lv_newline &&
+      '=== EMPLOYEES ==='           && lv_newline &&
+      'Card: EMPLOYEE'              && lv_newline &&
+      'Name: B.Sc. Cucurella'       && lv_newline &&
+      'First name: Marc'            && lv_newline &&
+      'Role: Team Member'           && lv_newline &&
+      'Manager: Luis de la Fuente'  && lv_newline &&
+      ''                            && lv_newline &&
+      'Card: EMPLOYEE'              && lv_newline &&
+      'Name: Yamal'                 && lv_newline &&
+      'First name: Lamine'          && lv_newline &&
+      'Role: Team Member'           && lv_newline &&
+      'Manager: Luis de la Fuente'  && lv_newline &&
+      ''                            && lv_newline.
+
+    cl_abap_unit_assert=>assert_equals(
+      exp = lv_expected
       act = ls_template_result-text
     ).
   ENDMETHOD.
