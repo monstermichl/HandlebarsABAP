@@ -825,7 +825,7 @@ CLASS zcl_handlebars_abap DEFINITION
         VALUE(it_args)    TYPE tt_data ##NEEDED
         VALUE(is_options) TYPE ts_options
       RETURNING
-        VALUE(rs_result)  TYPE ts_text_result.
+        VALUE(rs_result)  TYPE ts_data_result.
 
     METHODS backend_eval_sub_expr
       IMPORTING
