@@ -3465,6 +3465,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       CHANGING
         ca_result = rs_result
     ).
+
+    " Ensure data in result is bound.
+    IF rs_result-data IS NOT BOUND.
+      rs_result-data = NEW string( ).
+    ENDIF.
   ENDMETHOD.
 
 
