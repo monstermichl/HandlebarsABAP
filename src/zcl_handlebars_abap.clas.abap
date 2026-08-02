@@ -83,6 +83,7 @@ CLASS zcl_handlebars_abap DEFINITION
              partials_prevent_indent       TYPE abap_bool,
            END OF ts_template_options.
 
+    CONSTANTS: c_version TYPE string VALUE '1.1.0' ##NEEDED.
 
     "! Compiles the passed Handlebars template.
     "!
