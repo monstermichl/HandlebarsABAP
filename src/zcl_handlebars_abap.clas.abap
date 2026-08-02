@@ -834,6 +834,13 @@ CLASS zcl_handlebars_abap DEFINITION
       RETURNING
         VALUE(rs_result)  TYPE ts_data_result.
 
+    METHODS backend_eval_lookup_helper
+      IMPORTING
+        VALUE(it_args)    TYPE tt_data ##NEEDED
+        VALUE(is_options) TYPE ts_options
+      RETURNING
+        VALUE(rs_result)  TYPE ts_data_result.
+
     METHODS backend_eval_sub_expr
       IMPORTING
         ir_sub_expr      TYPE REF TO ts_parser_sub_expr
@@ -1342,7 +1349,8 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       me->register_helper( iv_name = c_with   ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_with_helper' ) ).
 
       " Register default inline-helpers.
-      me->register_helper( iv_name = 'log' ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_log_helper' ) ).
+      me->register_helper( iv_name = 'log'    ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_log_helper'    ) ).
+      me->register_helper( iv_name = 'lookup' ir_helper = NEW ts_object_helper( object = me method_name = 'backend_eval_lookup_helper' ) ).
     ENDIF.
   ENDMETHOD.
 
@@ -3506,6 +3514,68 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     IF lv_log_text <> ' '.
       WRITE / lv_log_text.
     ENDIF.
+  ENDMETHOD.
+
+
+  METHOD backend_eval_lookup_helper.
+    DATA(lo_instance) = is_options-instance.
+
+    IF lines( it_args ) <> 2.
+      rs_result-error = lo_instance->error( 'lookup needs exactly 2 arguments, an object/table and a property/index' ).
+      RETURN.
+    ENDIF.
+
+    ASSIGN it_args[ 1 ]->* TO FIELD-SYMBOL(<arg_0>).
+
+    DATA(lo_arg_0_descriptor) = cl_abap_datadescr=>describe_by_data( <arg_0> ).
+    DATA(lv_arg_0_kind) = lo_arg_0_descriptor->kind.
+
+    " Make sure first argument is an object or a table.
+    CASE lv_arg_0_kind.
+      WHEN cl_abap_datadescr=>kind_table OR cl_abap_datadescr=>kind_struct.
+        " Good cases.
+      WHEN OTHERS.
+        rs_result-error = lo_instance->error( 'first lookup argument is neither an object nor a table' ).
+        RETURN.
+    ENDCASE.
+
+    ASSIGN it_args[ 2 ]->* TO FIELD-SYMBOL(<arg_1>).
+    DATA(lo_arg_1_descriptor) = cl_abap_datadescr=>describe_by_data( <arg_1> ).
+
+    " Make sure second argument is a string or an integer.
+    IF lo_arg_1_descriptor->kind <> cl_abap_datadescr=>kind_elem.
+      rs_result-error = lo_instance->error( 'second lookup argument is neither a proparty nor an index' ).
+      RETURN.
+    ENDIF.
+
+    CASE lv_arg_0_kind.
+      WHEN cl_abap_datadescr=>kind_table.
+        TRY.
+            FIELD-SYMBOLS <table> TYPE table.
+
+            " Try to convert argument to int.
+            DATA lv_index TYPE i.
+            lv_index = <arg_1>.
+
+            " Add 1 to be ABAP conform (Handlebars counts from 0).
+            lv_index = lv_index + 1.
+
+            ASSIGN <arg_0> TO <table>.
+            READ TABLE <table> ASSIGNING FIELD-SYMBOL(<table_entry>) INDEX lv_index.
+
+            IF sy-subrc = 0.
+              GET REFERENCE OF <table_entry> INTO rs_result-data.
+            ENDIF.
+          CATCH cx_root.
+        ENDTRY.
+
+      WHEN cl_abap_datadescr=>kind_struct.
+        ASSIGN COMPONENT <arg_1> OF STRUCTURE <arg_0> TO FIELD-SYMBOL(<property_value>).
+
+        IF sy-subrc = 0.
+          GET REFERENCE OF <property_value> INTO rs_result-data.
+        ENDIF.
+    ENDCASE.
   ENDMETHOD.
 
 
