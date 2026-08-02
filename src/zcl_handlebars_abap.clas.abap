@@ -74,7 +74,12 @@ CLASS zcl_handlebars_abap DEFINITION
              data     TYPE tr_data,
            END OF ts_options.
 
-    CONSTANTS: c_version TYPE string VALUE '1.0.1' ##NEEDED.
+    TYPES: BEGIN OF ts_template_options,
+             " If true, a partial can access it's parent's context
+             " via relative paths.
+             allow_partial_par_ctx_access TYPE abap_bool,
+           END OF ts_template_options.
+
 
     "! Compiles the passed Handlebars template.
     "!
@@ -140,9 +145,13 @@ CLASS zcl_handlebars_abap DEFINITION
     "! @parameter ia_data | A struct or table.
     METHODS template
       IMPORTING
-        ia_data          TYPE any OPTIONAL
+        VALUE(ia_data)    TYPE any OPTIONAL
+      CHANGING
+        " Options are passed as CHANGING to prevent a breaking change.
+        " There are not changes applied to the options data.
+        VALUE(cs_options) TYPE ts_template_options OPTIONAL
       RETURNING
-        VALUE(rs_result) TYPE ts_template_result.
+        VALUE(rs_result)  TYPE ts_template_result.
 
     "! Renders the current block's content.
     "!
@@ -670,15 +679,17 @@ CLASS zcl_handlebars_abap DEFINITION
 
     TYPES: tt_backend_block_stack TYPE TABLE OF ts_backend_block_stack_block.
 
-    DATA: mt_backend_block_stack   TYPE tt_backend_block_stack,
+    DATA: ms_template_options      TYPE ts_template_options,
+          mt_backend_block_stack   TYPE tt_backend_block_stack,
           mv_backend_inline_helper TYPE ts_parser_inline_helper.
 
     METHODS template_internal
       IMPORTING
-        VALUE(ir_data)   TYPE REF TO data OPTIONAL
-        VALUE(ir_parent) TYPE REF TO zcl_handlebars_abap OPTIONAL
+        VALUE(ir_data)    TYPE REF TO data OPTIONAL
+        VALUE(ir_parent)  TYPE REF TO zcl_handlebars_abap OPTIONAL
+        VALUE(is_options) TYPE ts_template_options OPTIONAL
       RETURNING
-        VALUE(rs_result) TYPE ts_template_result.
+        VALUE(rs_result)  TYPE ts_template_result.
 
     METHODS backend_build_error
       IMPORTING
@@ -906,14 +917,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
   METHOD template.
     DATA(lr_data) = me->any_to_ref_to_data( ia_data ).
 
-    " Push a pseudo block to have a base for the whole template.
-    me->backend_push_pseudo_block( lr_data ).
-
     " Template.
-    rs_result = me->template_internal( ir_data = lr_data ).
-
-    " Pop pseudo block.
-    me->backend_pop_block( ).
+    rs_result = me->template_internal(
+      ir_data    = lr_data
+      is_options = cs_options
+    ).
   ENDMETHOD.
 
 
@@ -989,6 +997,13 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD template_internal.
+    me->ms_template_options = is_options.
+
+    IF ir_parent IS NOT BOUND.
+      " Push a pseudo block to have a base for the whole template.
+      me->backend_push_pseudo_block( ir_data ).
+    ENDIF.
+
     me->mr_parent = ir_parent.
 
     DATA(ls_result) = me->backend_eval_stmt(
@@ -1000,6 +1015,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     IF lv_error IS NOT INITIAL.
       rs_result-error = lv_error.
       RETURN.
+    ENDIF.
+
+    IF ir_parent IS NOT BOUND.
+      " Pop pseudo block.
+      me->backend_pop_block( ).
     ENDIF.
 
     rs_result-text = ls_result-text.
@@ -2971,9 +2991,19 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ENDIF.
 
     DATA(lr_found_partial) = lr_find_partial_result-partial.
+    DATA(ls_options) = me->ms_template_options.
+
+    DATA lr_passed_parent TYPE REF TO zcl_handlebars_abap.
+
+    " Allow access of parent context in partial only if it was explicitly specified.
+    IF ls_options-allow_partial_par_ctx_access = abap_true.
+      lr_passed_parent = me.
+    ENDIF.
+
     DATA(ls_partial_result) = lr_found_partial->partial->template_internal(
-      ir_data   = lr_data
-      ir_parent = me
+      ir_data    = lr_data
+      ir_parent  = lr_passed_parent
+      is_options = ls_options
     ).
 
     " Pop context "block" if necessary.
