@@ -1946,6 +1946,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD parser_eval_partial.
+    DATA(lv_front_standalone) = me->parser_pre_check_standalone( ).
     DATA(ls_token) = me->parser_eat( ).
     DATA(ls_start_token) = ls_token.
 
@@ -2011,6 +2012,11 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       ENDIF.
 
       lr_partial->context = lt_args[ 1 ].
+    ENDIF.
+
+    IF lv_front_standalone = abap_true AND me->parser_post_check_standalone( 1 ) = abap_true.
+      rs_result-standalone_pre  = lv_front_standalone.
+      rs_result-standalone_post = abap_true.
     ENDIF.
 
     lr_partial->hashes = ls_arguments_result-hashes.
