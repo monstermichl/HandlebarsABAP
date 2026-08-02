@@ -108,12 +108,21 @@ CLASS zcl_handlebars_abap DEFINITION
 
     "! Registers a helper method globally. The passed method must implement the following signature.
     "!
+    "! Block helper:
     "! METHODS helper_method
     "!   IMPORTING
     "!     VALUE(it_args)    TYPE zcl_handlebars_abap=>tt_data
     "!     VALUE(is_options) TYPE zcl_handlebars_abap=>ts_helper_options
     "!   RETURNING
     "!     VALUE(rs_result)  TYPE zcl_handlebars_abap=>ts_text_result.
+    "!
+    "! Inline helper:
+    "! METHODS helper_method
+    "!   IMPORTING
+    "!     VALUE(it_args)    TYPE zcl_handlebars_abap=>tt_data
+    "!     VALUE(is_options) TYPE zcl_handlebars_abap=>ts_helper_options
+    "!   RETURNING
+    "!     VALUE(rs_result)  TYPE zcl_handlebars_abap=>ts_data_result.
     "!
     "! @parameter iv_name   | Helper name.
     "! @parameter ir_helper | Helper configuration (ts_class_helper | ts_object_helper | ts_func_module_helper | ts_form_helper).
@@ -133,12 +142,21 @@ CLASS zcl_handlebars_abap DEFINITION
 
     "! Registers a helper method. The method must implement the following signature.
     "!
+    "! Block helper:
     "! METHODS helper_method
     "!   IMPORTING
     "!     VALUE(it_args)    TYPE zcl_handlebars_abap=>tt_data
     "!     VALUE(is_options) TYPE zcl_handlebars_abap=>ts_helper_options
     "!   RETURNING
     "!     VALUE(rs_result)  TYPE zcl_handlebars_abap=>ts_text_result.
+    "!
+    "! Inline helper:
+    "! METHODS helper_method
+    "!   IMPORTING
+    "!     VALUE(it_args)    TYPE zcl_handlebars_abap=>tt_data
+    "!     VALUE(is_options) TYPE zcl_handlebars_abap=>ts_helper_options
+    "!   RETURNING
+    "!     VALUE(rs_result)  TYPE zcl_handlebars_abap=>ts_data_result.
     "!
     "! @parameter iv_name   | Helper name.
     "! @parameter ir_helper | Helper configuration (ts_class_helper | ts_object_helper | ts_func_module_helper | ts_form_helper).
