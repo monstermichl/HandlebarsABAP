@@ -20,6 +20,11 @@ CLASS zcl_handlebars_abap DEFINITION
              error TYPE string,
            END OF ts_text_result.
 
+    TYPES: BEGIN OF ts_data_result,
+             data  TYPE REF TO data,
+             error TYPE string,
+           END OF ts_data_result.
+
     TYPES: BEGIN OF ts_class_helper,
              class_name  TYPE string,
              method_name TYPE string,
@@ -750,10 +755,10 @@ CLASS zcl_handlebars_abap DEFINITION
 
     METHODS backend_eval_helper
       IMPORTING
-        ir_helper        TYPE REF TO data
-        ir_data          TYPE tr_data
-      RETURNING
-        VALUE(rs_result) TYPE ts_text_result.
+        ir_helper TYPE REF TO data
+        ir_data   TYPE tr_data
+      CHANGING
+        ca_result TYPE any.
 
     METHODS backend_eval_block
       IMPORTING
@@ -795,7 +800,7 @@ CLASS zcl_handlebars_abap DEFINITION
         ir_inline_helper TYPE REF TO ts_parser_inline_helper
         ir_data          TYPE tr_data
       RETURNING
-        VALUE(rs_result) TYPE ts_text_result.
+        VALUE(rs_result) TYPE ts_data_result.
 
     METHODS backend_eval_log_helper
       IMPORTING
@@ -855,12 +860,12 @@ CLASS zcl_handlebars_abap DEFINITION
 
     METHODS backend_call_helper
       IMPORTING
-        iv_name          TYPE string
-        it_args          TYPE tt_data OPTIONAL
-        it_hashes        TYPE tt_hashes OPTIONAL
-        ir_data          TYPE tr_data
-      RETURNING
-        VALUE(rs_result) TYPE ts_text_result.
+        iv_name   TYPE string
+        it_args   TYPE tt_data OPTIONAL
+        it_hashes TYPE tt_hashes OPTIONAL
+        ir_data   TYPE tr_data
+      CHANGING
+        ca_result TYPE any.
 
     METHODS backend_get_token_property
       IMPORTING
@@ -2810,7 +2815,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
           RETURN.
         ENDIF.
 
-        lr_data = NEW string( ls_inline_helper_result-text ).
+        lr_data = ls_inline_helper_result-data.
 
       WHEN 'ts_parser_path'.
         DATA lr_path TYPE REF TO ts_parser_path.
@@ -3104,8 +3109,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     ASSIGN ir_helper->* TO FIELD-SYMBOL(<helper_base>).
     MOVE-CORRESPONDING <helper_base> TO lr_helper->*.
 
+    ASSIGN COMPONENT 'ERROR' OF STRUCTURE ca_result TO FIELD-SYMBOL(<error>).
+
     IF lr_helper->name IS INITIAL.
-      rs_result-error = 'Invalid helper cast'.
+      <error> = 'Invalid helper cast'.
       RETURN.
     ENDIF.
 
@@ -3120,7 +3127,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       lv_error = ls_result-error.
 
       IF lv_error IS NOT INITIAL.
-        rs_result-error = lv_error.
+        <error> = lv_error.
         RETURN.
       ENDIF.
 
@@ -3138,7 +3145,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       lv_error = ls_result-error.
 
       IF lv_error IS NOT INITIAL.
-        rs_result-error = lv_error.
+        <error> = lv_error.
         RETURN.
       ENDIF.
 
@@ -3174,11 +3181,14 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       MOVE-CORRESPONDING <helper> TO me->mv_backend_inline_helper.
     ENDIF.
 
-    rs_result = me->backend_call_helper(
-      iv_name   = lr_helper->name
-      it_args   = lt_args
-      it_hashes = lt_hashes
-      ir_data   = ir_data
+    me->backend_call_helper(
+      EXPORTING
+        iv_name   = lr_helper->name
+        it_args   = lt_args
+        it_hashes = lt_hashes
+        ir_data   = ir_data
+      CHANGING
+        ca_result = ca_result
     ).
 
     " Pop last entry from block stack.
@@ -3191,9 +3201,12 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD backend_eval_block.
-    rs_result = me->backend_eval_helper(
-      ir_helper = ir_block
-      ir_data   = ir_data
+    me->backend_eval_helper(
+      EXPORTING
+        ir_helper = ir_block
+        ir_data   = ir_data
+      CHANGING
+        ca_result = rs_result
     ).
   ENDMETHOD.
 
@@ -3427,9 +3440,12 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD backend_eval_inline_helper.
-    rs_result = me->backend_eval_helper(
-      ir_helper = ir_inline_helper
-      ir_data   = ir_data
+    me->backend_eval_helper(
+      EXPORTING
+        ir_helper = ir_inline_helper
+        ir_data   = ir_data
+      CHANGING
+        ca_result = rs_result
     ).
   ENDMETHOD.
 
@@ -3681,18 +3697,23 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
 
         " If it's a helper, invoke it and use the result.
         IF ls_find_helper_result-error IS INITIAL.
-          DATA(rs_helper_result) = me->backend_call_helper(
-            iv_name = lv_part
-            ir_data = ir_data
+          DATA ls_helper_result TYPE ts_data_result.
+
+          me->backend_call_helper(
+            EXPORTING
+              iv_name   = lv_part
+              ir_data   = ir_data
+            CHANGING
+              ca_result = ls_helper_result
           ).
-          DATA(lv_error) = rs_helper_result-error.
+          DATA(lv_error) = ls_helper_result-error.
 
           IF lv_error IS NOT INITIAL.
-            rs_helper_result-error = lv_error.
+            rs_result-error = lv_error.
             RETURN.
           ENDIF.
 
-          lr_this = NEW string( rs_helper_result-text ).
+          lr_this = ls_helper_result-data.
           EXIT.
         ENDIF.
       ENDIF.
@@ -3863,8 +3884,10 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
     DATA(ls_find_helper_result) = me->find_helper( ir_instance = me iv_name = iv_name ).
     DATA(lv_error) = ls_find_helper_result-error.
 
+    ASSIGN COMPONENT 'ERROR' OF STRUCTURE ca_result TO FIELD-SYMBOL(<error>).
+
     IF lv_error IS NOT INITIAL.
-      rs_result-error = lv_error.
+      <error> = lv_error.
       RETURN.
     ENDIF.
 
@@ -3899,7 +3922,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
                 it_args    = it_args
                 is_options = ls_options
               RECEIVING
-                rs_result  = rs_result.
+                rs_result  = ca_result.
 
           WHEN 'ts_object_helper'.
             DATA lr_object_helper_config TYPE REF TO ts_object_helper.
@@ -3913,7 +3936,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
                 it_args    = it_args
                 is_options = ls_options
               RECEIVING
-                rs_result  = rs_result.
+                rs_result  = ca_result.
 
           WHEN 'ts_func_module_helper'.
             DATA lr_func_module_helper_config TYPE REF TO ts_func_module_helper.
@@ -3927,7 +3950,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
                 it_args    = it_args
                 is_options = ls_options
               IMPORTING
-                es_result  = rs_result.
+                es_result  = ca_result.
 
           WHEN 'ts_form_helper'.
             DATA lr_form_helper_config TYPE REF TO ts_form_helper.
@@ -3945,15 +3968,15 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
                 lt_args
                 ls_options
               CHANGING
-                rs_result.
+                ca_result.
 
           WHEN OTHERS.
-            rs_result-error = |Unsupported helper type { lv_type_name }|.
+            <error> = |Unsupported helper type { lv_type_name }|.
             RETURN.
         ENDCASE.
 
       CATCH cx_root INTO DATA(lx_error).
-        rs_result-error = lx_error->get_longtext( ).
+        <error> = lx_error->get_longtext( ).
     ENDTRY.
   ENDMETHOD.
 
