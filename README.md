@@ -104,6 +104,11 @@ To compile a template stored via transaction SMW0, just pass the template name t
 {{log "Hello World"}}
 ```
 
+##### lookup
+```hbs
+{{lookup (lookup employees 0) "firstname"}}
+```
+
 ### Block parameters
 ```hbs
 {{#each people as |person index|}}
