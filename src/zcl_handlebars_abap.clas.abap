@@ -2536,7 +2536,7 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       DATA(ls_token) = parser_peek_at( iv_offset ).
       DATA(lv_token_type) = ls_token-type.
 
-      IF ls_token IS INITIAL OR lv_token_type = e_token_type_newline.
+      IF ls_token IS INITIAL OR lv_token_type = e_token_type_newline OR lv_token_type = e_token_type_eof.
         EXIT.
       ELSEIF lv_token_type = e_token_type_text_space.
         " Do nothing.
@@ -2581,14 +2581,18 @@ CLASS zcl_handlebars_abap IMPLEMENTATION.
       DATA(ls_token) = me->parser_peek( ).
 
       IF ls_token-type = e_token_type_text_space.
-        me->mv_parser_index = me->mv_parser_index + 1.
+        me->parser_eat( ).
       ELSE.
         EXIT.
       ENDIF.
     ENDDO.
 
+    ls_token = me->parser_peek( ).
+
     " Skip newline.
-    me->mv_parser_index = me->mv_parser_index + 1.
+    IF ls_token-type = e_token_type_newline.
+      me->parser_eat( ).
+    ENDIF.
   ENDMETHOD.
 
 
