@@ -22,7 +22,7 @@ CLASS ltcl_handlebars_abap DEFINITION FOR TESTING
         it_args          TYPE zcl_handlebars_abap=>tt_data
         is_options       TYPE zcl_handlebars_abap=>ts_options ##NEEDED
       RETURNING
-        VALUE(rs_result) TYPE zcl_handlebars_abap=>ts_text_result.
+        VALUE(rs_result) TYPE zcl_handlebars_abap=>ts_data_result.
 
   PRIVATE SECTION.
     TYPES: BEGIN OF ts_title,
@@ -87,32 +87,40 @@ CLASS ltcl_handlebars_abap IMPLEMENTATION.
 
 
   METHOD arguments_check.
+    DATA lv_text TYPE string.
+
     LOOP AT it_args INTO DATA(lr_arg).
       ASSIGN lr_arg->* TO FIELD-SYMBOL(<arg>).
-      rs_result-text = |{ rs_result-text } { <arg> }|.
+      lv_text = |{ lv_text } { <arg> }|.
     ENDLOOP.
 
     LOOP AT is_options-hashes INTO DATA(ls_hash).
       ASSIGN ls_hash-data->* TO FIELD-SYMBOL(<hash_value>).
-      rs_result-text = |{ rs_result-text } { ls_hash-key }={ <hash_value> }|.
+      lv_text = |{ lv_text } { ls_hash-key }={ <hash_value> }|.
     ENDLOOP.
 
-    CONDENSE rs_result-text.
+    CONDENSE lv_text.
+
+    rs_result-text = lv_text.
   ENDMETHOD.
 
 
   METHOD inline_helper.
+    DATA lv_text TYPE string.
+
     LOOP AT it_args INTO DATA(lr_arg).
       ASSIGN lr_arg->* TO FIELD-SYMBOL(<arg>).
-      rs_result-text = |{ rs_result-text } { <arg> }|.
+      lv_text = |{ lv_text } { <arg> }|.
     ENDLOOP.
 
     LOOP AT is_options-hashes INTO DATA(ls_hash).
       ASSIGN ls_hash-data->* TO FIELD-SYMBOL(<hash_value>).
-      rs_result-text = |{ rs_result-text } { ls_hash-key }={ <hash_value> }|.
+      lv_text = |{ lv_text } { ls_hash-key }={ <hash_value> }|.
     ENDLOOP.
 
-    CONDENSE rs_result-text.
+    CONDENSE lv_text.
+
+    rs_result-data = NEW string( lv_text ).
   ENDMETHOD.
 
 
