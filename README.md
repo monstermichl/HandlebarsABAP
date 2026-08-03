@@ -145,7 +145,7 @@ Manager: {{#if is_manager}}Yes{{else}}No{{/if}}
 {{> card this is_manager=true}}
 
 {{#each employees}}
-{{> card}}
+{{> card .}}
 {{/each}}
 ```
 
